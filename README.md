@@ -17,7 +17,7 @@
     under the License.
 -->
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.apache.datasketches/datasketches-java)](https://central.sonatype.com/artifact/org.apache.datasketches/datasketches-java/9.0.0/versions)
+[![Maven Central](https://img.shields.io/maven-central/v/org.apache.datasketches/datasketches-cuda)](https://central.sonatype.com/artifact/org.apache.datasketches/datasketches-cuda)
 
 # Apache® DataSketches™ Core CUDA Library Component
 This is the core CUDA component of the DataSketches library.  It contains sketching algorithms that can be accessed directly from user applications.
