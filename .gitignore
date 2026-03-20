@@ -1,0 +1,55 @@
+# Eclipse project files 
+.cproject
+.project
+.settings/
+
+# VSCode project files
+.vscode/
+
+# Maven files
+.mvn
+
+# OSX files
+.DS_Store
+
+# C++ Compiler output, build specific
+*.a
+*.o
+*.so
+*.dll
+*.dylib
+bin/
+lib/
+Default/
+
+# Python files
+.eggs/
+.tox/
+dist/
+
+# Log file
+*.log
+
+# Package Files #
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Other
+local/
+tmp/
+_site/
+_*
+_*/
+
+
+# Build artifacts
+serialization_test_data/
+build/
+
+
+# Sketch binary test files
+*.sk
