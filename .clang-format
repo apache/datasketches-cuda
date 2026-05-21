@@ -1,0 +1,163 @@
+---
+# Refer to https://clang.llvm.org/docs/ClangFormatStyleOptions.html for the
+# full list of options. This file is adapted from NVIDIA cuCollections'
+# .clang-format (Google-derived) with IncludeCategories rewritten for the
+# datasketches-cuda layout.
+#
+# Note: clang-format does NOT enforce identifier naming. Add a .clang-tidy
+# (readability-identifier-naming) when snake_case enforcement is needed.
+Language: Cpp
+# BasedOnStyle: Google
+AccessModifierOffset: -1
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: true
+AlignConsecutiveBitFields: true
+AlignConsecutiveDeclarations: false
+AlignConsecutiveMacros: true
+AlignEscapedNewlines: Left
+AlignOperands: true
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+AllowAllConstructorInitializersOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortBlocksOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLambdasOnASingleLine: true
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: true
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments:  false
+BinPackParameters: false
+BraceWrapping:
+  AfterClass:            false
+  AfterControlStatement: false
+  AfterEnum:             false
+  AfterFunction:         false
+  AfterNamespace:        false
+  AfterObjCDeclaration:  false
+  AfterStruct:           false
+  AfterUnion:            false
+  AfterExternBlock:      false
+  BeforeCatch:           false
+  BeforeElse:            false
+  IndentBraces:          false
+  SplitEmptyFunction:    false
+  SplitEmptyRecord:      false
+  SplitEmptyNamespace:   false
+BreakAfterJavaFieldAnnotations: false
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: WebKit
+BreakBeforeInheritanceComma: false
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializersBeforeComma: false
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakStringLiterals: true
+ColumnLimit: 100
+CommentPragmas: '^ IWYU pragma:'
+CompactNamespaces: false
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 2
+ContinuationIndentWidth: 2
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+DisableFormat: false
+ExperimentalAutoDetectBinPacking: false
+FixNamespaceComments: true
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+IncludeBlocks: Regroup
+# First-match wins; list more specific patterns higher in the file.
+# Lower Priority value = appears earlier in the regrouped output.
+IncludeCategories:
+  # 1. STL standard headers (no dot, e.g. <vector>, <cstdint>)
+  - Regex:           '^<[^.]+>$'
+    Priority:        1
+  # 2. CUDA driver/runtime (cuda_runtime.h, cuda.h)
+  - Regex:           '^<cuda(_runtime)?\.h>$'
+    Priority:        2
+  # 3. CCCL (libcudacxx + Thrust + CUB). Must appear before cudax pattern
+  #    in source, but cudax gets a more specific regex BELOW with a higher
+  #    Priority so that cudax includes still group together after CCCL.
+  - Regex:           '^<cuda/experimental/'
+    Priority:        4
+  - Regex:           '^<(cuda|thrust|cub)/'
+    Priority:        3
+  # 5. catch2 test framework
+  - Regex:           '^<catch2/'
+    Priority:        5
+  # 6. datasketches-cpp upstream public headers (per-sketch-type filenames)
+  - Regex:           '^<(hll|HllUtil|common_defs|theta|kll|cpc|tdigest|sampling|req|count|density|fi|quantiles|tuple)([._]|\.hpp)'
+    Priority:        6
+  # 7. datasketches-cuda public headers (our own, angle-form qualified)
+  - Regex:           '^<datasketches/cuda/'
+    Priority:        7
+  # 8. other system headers with a dot (catch-all for everything not above)
+  - Regex:           '^<.*\..*>$'
+    Priority:        8
+  # 9. quoted (project-local relative) - always appears last
+  - Regex:           '^"'
+    Priority:        9
+IndentCaseLabels: true
+IndentPPDirectives: None
+IndentWidth:     2
+IndentWrappedFunctionNames: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+MacroBlockBegin: ''
+MacroBlockEnd:   ''
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: None
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 1
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyBreakTemplateDeclaration: 10
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 200
+PointerAlignment: Left
+RawStringFormats:
+  - Language: Cpp
+    Delimiters:
+      - cc
+      - CC
+      - cpp
+      - Cpp
+      - CPP
+      - 'c++'
+      - 'C++'
+    CanonicalDelimiter: ''
+ReflowComments: true
+SortIncludes: true
+SortUsingDeclarations: true
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: false
+SpacesInConditionalStatement: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Standard: c++17
+StatementMacros:
+  - Q_UNUSED
+  - QT_REQUIRE_VERSION
+TabWidth: 2
+UseTab: Never

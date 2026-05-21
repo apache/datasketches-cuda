@@ -1,0 +1,43 @@
+# apache/datasketches-cpp: header-only library used as:
+#   - parity reference (CPU sketch) in tests
+#   - delegation target for the Composite estimator helpers
+#     (HarmonicNumbers, CubicInterpolation, CompositeInterpolationXTable)
+#   - public dependency: hll/include/hll_sketch.hpp, detail/preamble.hpp,
+#     and detail/composite_finalizer.hpp all include upstream headers directly,
+#     so any consumer of datasketches::cuda also needs datasketches on the path.
+#
+# Minimum version: 5.0.0. The helpers we use (HllUtil, HarmonicNumbers, etc.)
+# have been in the public surface since at least v3.x; 5.0.0 is a conservative
+# floor aligned with current stable releases (latest: 5.2.0).
+#
+# Developer override: -DCPM_datasketches_SOURCE=/path/to/local/checkout (CPM-native).
+# Note: if find_package succeeds, the CPM_datasketches_SOURCE override is ignored
+# because the CPM fallback path is never reached.
+function(find_and_configure_datasketches_cpp)
+  # datasketches-cpp's project name is `DataSketches` (CapitalCase) per its
+  # top-level `project(DataSketches ...)`, so its installed config is
+  # DataSketchesConfig.cmake and the found-var is DataSketches_FOUND. The
+  # in-source target name remains lowercase `datasketches` (unaliased), which
+  # is what we link against. The CPM NAME below is also `datasketches` because
+  # that's the in-source package name CPM expects to match against
+  # CPM_datasketches_SOURCE overrides.
+  find_package(DataSketches 5.0.0 CONFIG QUIET)
+  if(DataSketches_FOUND)
+    message(STATUS
+      "datasketches_cuda: using installed DataSketches ${DataSketches_VERSION}")
+    return()
+  endif()
+
+  message(STATUS
+    "datasketches_cuda: DataSketches >= 5.0.0 not found via find_package "
+    "- fetching 5.2.0 via CPM")
+  CPMAddPackage(
+    NAME datasketches
+    GITHUB_REPOSITORY apache/datasketches-cpp
+    GIT_TAG 5.2.0
+    OPTIONS
+      "BUILD_TESTS OFF"
+  )
+endfunction()
+
+find_and_configure_datasketches_cpp()
