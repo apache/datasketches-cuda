@@ -40,6 +40,8 @@
 #include <cuda/std/cstdint>
 #include <cuda/std/type_traits>
 
+#include <cuda_runtime.h>
+
 #include <cuda/std/__bit/bit_cast.h>
 
 #include <cuda/experimental/__cuco/hash_functions.cuh>
@@ -57,12 +59,12 @@ class normalizing_hasher {
  public:
   using result_type = __uint128_t;
 
-  _CCCL_HOST_DEVICE constexpr normalizing_hasher(::cuda::std::uint64_t __seed = 9001) noexcept
+  __host__ __device__ constexpr normalizing_hasher(::cuda::std::uint64_t __seed = 9001) noexcept
     : _inner(__seed)
   {
   }
 
-  [[nodiscard]] _CCCL_HOST_DEVICE constexpr __uint128_t operator()(const _Key& __k) const noexcept
+  [[nodiscard]] __host__ __device__ constexpr __uint128_t operator()(const _Key& __k) const noexcept
   {
     return _inner(_canonicalize(__k));
   }
@@ -71,7 +73,7 @@ class normalizing_hasher {
   _murmur_u64 _inner;
 
   // Produce the canonical uint64_t that datasketches-cpp would hash for __k.
-  _CCCL_HOST_DEVICE static constexpr ::cuda::std::uint64_t _canonicalize(const _Key& __k) noexcept
+  __host__ __device__ static constexpr ::cuda::std::uint64_t _canonicalize(const _Key& __k) noexcept
   {
     // uint64_t / int64_t: hash raw bits (no extension needed).
     if constexpr (sizeof(_Key) == 8 && ::cuda::std::is_integral_v<_Key>) {

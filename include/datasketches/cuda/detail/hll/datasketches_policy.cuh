@@ -23,6 +23,8 @@
 #include <cuda/std/cstdint>
 #include <cuda/std/type_traits>
 
+#include <cuda_runtime.h>
+
 #include <cuda/std/__bit/countl.h>
 
 #include <cuda/experimental/__cuco/hash_functions.cuh>
@@ -73,13 +75,13 @@ struct datasketches_policy {
   //! @brief Returns the underlying hash functor.
   //!
   //! @return The hash functor.
-  [[nodiscard]] _CCCL_API constexpr hasher hash_function() const noexcept { return hasher_; }
+  [[nodiscard]] __host__ __device__ constexpr hasher hash_function() const noexcept { return hasher_; }
 
   //! @brief Hashes an item.
   //!
   //! @param[in] __k The item to hash.
   //! @return The 128-bit MurmurHash3 hash value of `__k`.
-  [[nodiscard]] _CCCL_API constexpr hash_result_type hash(const _Key& __k) const noexcept
+  [[nodiscard]] __host__ __device__ constexpr hash_result_type hash(const _Key& __k) const noexcept
   {
     return hasher_(__k);
   }
@@ -92,7 +94,7 @@ struct datasketches_policy {
   //! @param[in] __h The 128-bit hash value.
   //! @param[in] __precision The HLL precision parameter (lgK).
   //! @return The register index in `[0, 2^__precision)`.
-  [[nodiscard]] _CCCL_API constexpr ::cuda::std::uint32_t register_index(
+  [[nodiscard]] __host__ __device__ constexpr ::cuda::std::uint32_t register_index(
     hash_result_type __h, int __precision) const noexcept
   {
     const auto __h1   = static_cast<::cuda::std::uint64_t>(__h);
@@ -109,7 +111,7 @@ struct datasketches_policy {
   //! @param[in] __h The 128-bit hash value.
   //! @param[in] __precision Unused; present for cudax policy concept conformance.
   //! @return rho, in `[1, 63]`.
-  [[nodiscard]] _CCCL_API constexpr ::cuda::std::uint8_t register_value(
+  [[nodiscard]] __host__ __device__ constexpr ::cuda::std::uint8_t register_value(
     hash_result_type __h, int __precision) const noexcept
   {
     (void)__precision;
@@ -126,7 +128,7 @@ struct datasketches_policy {
   //! register array. See `composite_finalizer.hpp`.
   //!
   //! @return 0 unconditionally.
-  [[nodiscard]] static _CCCL_API constexpr ::cuda::std::size_t finalize(double, int, int) noexcept
+  [[nodiscard]] __host__ __device__ static constexpr ::cuda::std::size_t finalize(double, int, int) noexcept
   {
     return 0;
   }
