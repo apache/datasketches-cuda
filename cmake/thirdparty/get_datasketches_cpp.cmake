@@ -13,6 +13,10 @@
 # Developer override: -DCPM_datasketches_SOURCE=/path/to/local/checkout (CPM-native).
 # Note: if find_package succeeds, the CPM_datasketches_SOURCE override is ignored
 # because the CPM fallback path is never reached.
+if(NOT COMMAND CPMAddPackage)
+  include(${CMAKE_CURRENT_LIST_DIR}/../get_cpm.cmake)
+endif()
+
 function(find_and_configure_datasketches_cpp)
   # datasketches-cpp's project name is `DataSketches` (CapitalCase) per its
   # top-level `project(DataSketches ...)`, so its installed config is

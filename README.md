@@ -76,9 +76,6 @@ Fetched automatically via CPM at configure time (no manual install required):
 - [apache/datasketches-cpp](https://github.com/apache/datasketches-cpp) `5.2.0` (fall-back if `find_package(DataSketches 5.0.0 CONFIG)` does not locate a system install)
 - [Catch2](https://github.com/catchorg/Catch2) `3.5.3` (test-only)
 
-A vendored copy of `CPM.cmake` (v0.42.3) lives at `cmake/CPM.cmake`; no
-network is touched at configure time other than the dependency fetch above.
-
 ## Compilation and Test
 
 Standard CMake workflow:

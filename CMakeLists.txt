@@ -12,9 +12,6 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Vendored CPM (cmake/CPM.cmake). No network at configure time.
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/CPM.cmake)
-
 # BUILD_TESTS defaults ON when this is the top-level project and OFF when
 # consumed via add_subdirectory or CPM (same convention as cuCollections).
 set(_default OFF)

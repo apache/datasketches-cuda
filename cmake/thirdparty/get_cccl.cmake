@@ -21,6 +21,10 @@
 # behind it, and hll/include/hll_sketch.hpp uses cuda::experimental::cuco::hyperloglog.
 #
 # Developer override: -DCPM_CCCL_SOURCE=/path/to/local/cccl (CPM-native).
+if(NOT COMMAND CPMAddPackage)
+  include(${CMAKE_CURRENT_LIST_DIR}/../get_cpm.cmake)
+endif()
+
 function(find_and_configure_cccl)
   message(WARNING
     "datasketches_cuda: fetching CCCL@5d79bc23cf via CPM "
