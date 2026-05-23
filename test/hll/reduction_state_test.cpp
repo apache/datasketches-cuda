@@ -17,7 +17,7 @@
  * under the License.
  */
 
-// Validates that `datasketches::cuda::detail::reduce_hll8` produces the same
+// Validates that `datasketches::cuda::detail::hll::reduce_hll8` produces the same
 // (kxq0, kxq1, curMin, numAtCurMin) as the CPU sketch's stored state for the
 // same register array. Pure host test.
 
@@ -62,7 +62,7 @@ cpu_state extract(const std::vector<uint8_t>& bytes)
 // register array (widened to int32_t per cudax storage layout).
 struct test_pair {
   cpu_state cpu;
-  ::datasketches::cuda::detail::reduction_result gpu_side;
+  ::datasketches::cuda::detail::hll::reduction_result gpu_side;
 };
 
 test_pair run(uint8_t lgK, uint64_t n, uint64_t seed)
@@ -82,7 +82,7 @@ test_pair run(uint8_t lgK, uint64_t n, uint64_t seed)
 
   return {
     extract(bytes),
-    ::datasketches::cuda::detail::reduce_hll8(
+    ::datasketches::cuda::detail::hll::reduce_hll8(
       ::cuda::std::span<const std::int32_t>{registers.data(), registers.size()}, lgK),
   };
 }
@@ -109,7 +109,7 @@ TEST_CASE("reduce_hll8 empty register array", "[reduction_state]")
   const uint8_t lgK           = 12;
   const std::uint32_t configK = 1u << lgK;
   std::vector<std::int32_t> zeros(configK, 0);
-  auto r = ::datasketches::cuda::detail::reduce_hll8(
+  auto r = ::datasketches::cuda::detail::hll::reduce_hll8(
     ::cuda::std::span<const std::int32_t>{zeros.data(), zeros.size()}, lgK);
   REQUIRE(r.kxq0 == static_cast<double>(configK));
   REQUIRE(r.kxq1 == 0.0);
@@ -123,7 +123,7 @@ TEST_CASE("reduce_hll8 all-saturated register array (rho=63)", "[reduction_state
   const uint8_t lgK           = 8;
   const std::uint32_t configK = 1u << lgK;
   std::vector<std::int32_t> sat(configK, 63);
-  auto r = ::datasketches::cuda::detail::reduce_hll8(
+  auto r = ::datasketches::cuda::detail::hll::reduce_hll8(
     ::cuda::std::span<const std::int32_t>{sat.data(), sat.size()}, lgK);
   REQUIRE(r.kxq0 == Approx(static_cast<double>(configK)));
   // Every register contributes (2^-63 - 1) to kxq1 (since 63 >= 32).

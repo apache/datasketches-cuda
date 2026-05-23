@@ -31,7 +31,7 @@
 
 #include <datasketches/cuda/detail/hll/normalizing_hasher.cuh>
 
-namespace datasketches::cuda::detail {
+namespace datasketches::cuda::detail::hll {
 
 //! @brief Policy that drives `cuda::experimental::cuco::hyperloglog` to produce
 //! sketches binary-compatible with `datasketches::hll_sketch` (apache datasketches-cpp).
@@ -56,7 +56,7 @@ namespace datasketches::cuda::detail {
 //! D2H-copies the registers, runs a wider reduction, and applies the Composite
 //! estimator on host).
 template <class _Key>
-struct datasketches_policy {
+struct policy {
   // Per-key normalization matching datasketches-cpp's hll_sketch::update(...)
   // overloads (HllSketch-internal.hpp). normalizing_hasher<_Key> converts the
   // key to its canonical 8-byte representation before feeding
@@ -134,4 +134,4 @@ struct datasketches_policy {
   }
 };
 
-}  // namespace datasketches::cuda::detail
+}  // namespace datasketches::cuda::detail::hll

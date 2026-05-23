@@ -17,7 +17,7 @@
  * under the License.
  */
 
-// Validates that `datasketches::cuda::detail::composite_finalizer` produces the
+// Validates that `datasketches::cuda::detail::hll::composite_finalizer` produces the
 // same result as `datasketches::hll_sketch::get_estimate()` when the CPU sketch
 // is forced into Composite mode (oooFlag=true).
 //
@@ -92,7 +92,7 @@ test_result run(uint8_t lgK, uint64_t n, uint64_t seed)
   auto cpu_composite = ::datasketches::hll_sketch::deserialize(bytes.data(), bytes.size());
 
   return {
-    datasketches::cuda::detail::composite_finalizer(
+    datasketches::cuda::detail::hll::composite_finalizer(
       state.kxq0 + state.kxq1, state.cur_min, state.num_at_cur_min, lgK),
     cpu_composite.get_estimate(),
   };
@@ -124,7 +124,7 @@ TEST_CASE("composite_finalizer empty sketch yields 0", "[composite_finalizer]")
   // For all-zero registers: kxq0+kxq1 = configK, raw = correctionFactor*configK, and
   // raw is well below xArr[0] for typical lgK.
   const double kxq_sum = static_cast<double>(configK);
-  const double our     = datasketches::cuda::detail::composite_finalizer(
+  const double our     = datasketches::cuda::detail::hll::composite_finalizer(
     kxq_sum, /*curMin=*/0u, /*numAtCurMin=*/configK, lgK);
   REQUIRE(our == Approx(0.0));
 }

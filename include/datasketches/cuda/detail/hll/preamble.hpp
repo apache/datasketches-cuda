@@ -28,24 +28,24 @@
 #include <HllUtil.hpp>
 #include <hll.hpp>
 
-namespace datasketches::cuda::detail {
+namespace datasketches::cuda::detail::hll {
 
 //! @brief Size of the HLL wire-format preamble in bytes.
-constexpr std::size_t HLL_PREAMBLE_BYTES = 40;
+constexpr std::size_t PREAMBLE_BYTES = 40;
 
 //! Mode values stored in the low 2 bits of `MODE_BYTE` (byte 7).
 //! Match `datasketches::hll_mode` values from
 //! `HllSketchImpl-internal.hpp:makeModeByte`.
-enum hll_mode_byte : std::uint8_t {
-  hll_mode_list = 0,
-  hll_mode_set  = 1,
-  hll_mode_hll  = 2,
+enum mode_byte : std::uint8_t {
+  mode_list = 0,
+  mode_set  = 1,
+  mode_hll  = 2,
 };
 
 //! @brief High-level view of the 40-byte HLL preamble.
 struct preamble_fields {
   std::uint8_t lgK;
-  std::uint8_t mode;  // hll_mode_byte
+  std::uint8_t mode;  // mode_byte
   std::uint8_t tgt;   // datasketches::cuda::target_hll_type
   bool is_empty;
   bool is_compact;
@@ -67,9 +67,9 @@ struct preamble_fields {
 //!
 //! @param[in] f Preamble fields.
 //! @return The 40-byte preamble.
-inline std::array<std::uint8_t, HLL_PREAMBLE_BYTES> assemble_preamble(const preamble_fields& f)
+inline std::array<std::uint8_t, PREAMBLE_BYTES> assemble_preamble(const preamble_fields& f)
 {
-  std::array<std::uint8_t, HLL_PREAMBLE_BYTES> b{};
+  std::array<std::uint8_t, PREAMBLE_BYTES> b{};
 
   b[::datasketches::hll_constants::PREAMBLE_INTS_BYTE] = ::datasketches::hll_constants::HLL_PREINTS;
   b[::datasketches::hll_constants::SER_VER_BYTE]       = ::datasketches::hll_constants::SER_VER;
@@ -107,7 +107,7 @@ inline std::array<std::uint8_t, HLL_PREAMBLE_BYTES> assemble_preamble(const prea
 //! @param[in] bytes The 40 bytes to parse.
 //! @return Parsed preamble fields.
 inline preamble_fields parse_preamble(
-  ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES> bytes)
+  ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> bytes)
 {
   if (bytes[::datasketches::hll_constants::SER_VER_BYTE] !=
       ::datasketches::hll_constants::SER_VER) {
@@ -139,11 +139,11 @@ inline preamble_fields parse_preamble(
   f.full_size_flag      = (flags & ::datasketches::hll_constants::FULL_SIZE_FLAG_MASK) != 0;
   f.cur_min             = bytes[::datasketches::hll_constants::HLL_CUR_MIN_BYTE];
 
-  const auto mode_byte = bytes[::datasketches::hll_constants::MODE_BYTE];
-  f.mode               = static_cast<std::uint8_t>(mode_byte & 0x3u);
-  f.tgt                = static_cast<std::uint8_t>((mode_byte >> 2) & 0x3u);
+  const auto packed_mode_byte = bytes[::datasketches::hll_constants::MODE_BYTE];
+  f.mode                      = static_cast<std::uint8_t>(packed_mode_byte & 0x3u);
+  f.tgt                       = static_cast<std::uint8_t>((packed_mode_byte >> 2) & 0x3u);
 
-  if (f.mode != hll_mode_hll) {
+  if (f.mode != mode_hll) {
     throw std::invalid_argument(
       "datasketches::cuda preamble: only HLL mode is supported (got LIST or SET)");
   }
@@ -164,4 +164,4 @@ inline preamble_fields parse_preamble(
   return f;
 }
 
-}  // namespace datasketches::cuda::detail
+}  // namespace datasketches::cuda::detail::hll

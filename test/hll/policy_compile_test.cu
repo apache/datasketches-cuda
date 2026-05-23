@@ -17,7 +17,7 @@
  * under the License.
  */
 
-// Compile-only sanity check that `datasketches::cuda::detail::datasketches_policy`
+// Compile-only sanity check that `datasketches::cuda::detail::hll::policy`
 // satisfies the cudax `_Policy` concept and can be substituted for the default
 // policy in `cuda::experimental::cuco::hyperloglog` and `hyperloglog_ref`.
 //
@@ -33,19 +33,19 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <datasketches/cuda/detail/hll/datasketches_policy.cuh>
+#include <datasketches/cuda/detail/hll/policy.cuh>
 
 using Key      = ::std::int64_t;
-using policy_t = datasketches::cuda::detail::datasketches_policy<Key>;
+using policy_t = datasketches::cuda::detail::hll::policy<Key>;
 using hll_t    = cuda::experimental::cuco::
   hyperloglog<Key, ::cuda::device_memory_pool_ref, ::cuda::thread_scope_device, policy_t>;
 using hll_ref_t =
   cuda::experimental::cuco::hyperloglog_ref<Key, ::cuda::thread_scope_device, policy_t>;
 
 static_assert(std::is_same_v<policy_t::hash_result_type, __uint128_t>,
-              "datasketches_policy::hash_result_type must be __uint128_t");
+              "policy::hash_result_type must be __uint128_t");
 static_assert(std::is_same_v<policy_t::register_type, ::std::int32_t>,
-              "datasketches_policy::register_type must be int32_t");
+              "policy::register_type must be int32_t");
 static_assert(policy_t::default_seed == 9001ULL,
               "datasketches HLL default seed is 9001 (datasketches-cpp common_defs.hpp:34)");
 

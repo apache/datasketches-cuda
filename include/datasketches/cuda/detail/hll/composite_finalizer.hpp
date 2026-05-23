@@ -26,7 +26,7 @@
 #include <CubicInterpolation.hpp>
 #include <HarmonicNumbers.hpp>
 
-namespace datasketches::cuda::detail {
+namespace datasketches::cuda::detail::hll {
 
 //! @brief Returns the HLL "raw" estimator (HyperLogLog harmonic mean form with
 //! the small-k correction factor).
@@ -37,7 +37,7 @@ namespace datasketches::cuda::detail {
 //!   register-array reduction (which is `sum_i 2^{-r_i}` split for precision).
 //! @param[in] lgK The HLL precision parameter.
 //! @return The bias-uncorrected HLL estimate.
-inline double hll_raw_estimate(double kxq0_plus_kxq1, uint8_t lgK) noexcept
+inline double raw_estimate(double kxq0_plus_kxq1, uint8_t lgK) noexcept
 {
   const uint32_t configK = 1u << lgK;
   double correctionFactor;
@@ -66,7 +66,7 @@ inline double hll_raw_estimate(double kxq0_plus_kxq1, uint8_t lgK) noexcept
 //!   `curMin == 0`, this is the count of zero (unhit) registers.
 //! @param[in] lgK The HLL precision parameter.
 //! @return The linear-counting estimate.
-inline double hll_bitmap_estimate(uint8_t curMin, uint32_t numAtCurMin, uint8_t lgK)
+inline double bitmap_estimate(uint8_t curMin, uint32_t numAtCurMin, uint8_t lgK)
 {
   const uint32_t configK         = 1u << lgK;
   const uint32_t numUnhitBuckets = (curMin == 0) ? numAtCurMin : 0u;
@@ -93,7 +93,7 @@ inline double composite_finalizer(double kxq0_plus_kxq1,
                                   uint32_t numAtCurMin,
                                   uint8_t lgK)
 {
-  const double rawEst = hll_raw_estimate(kxq0_plus_kxq1, lgK);
+  const double rawEst = raw_estimate(kxq0_plus_kxq1, lgK);
 
   const double* xArr     = ::datasketches::CompositeInterpolationXTable<>::get_x_arr(lgK);
   const uint32_t xArrLen = ::datasketches::CompositeInterpolationXTable<>::get_x_arr_length();
@@ -116,7 +116,7 @@ inline double composite_finalizer(double kxq0_plus_kxq1,
   // value. Threshold 3*k is safe for 2^4 <= k <= 2^21.
   if (adjEst > static_cast<double>(3u << lgK)) { return adjEst; }
 
-  const double linEst = hll_bitmap_estimate(curMin, numAtCurMin, lgK);
+  const double linEst = bitmap_estimate(curMin, numAtCurMin, lgK);
   const double avgEst = (adjEst + linEst) / 2.0;
 
   // Empirical crossover constants (HllArray-internal.hpp:404-406).
@@ -130,4 +130,4 @@ inline double composite_finalizer(double kxq0_plus_kxq1,
   return (avgEst > (crossOver * static_cast<double>(1u << lgK))) ? adjEst : linEst;
 }
 
-}  // namespace datasketches::cuda::detail
+}  // namespace datasketches::cuda::detail::hll

@@ -34,14 +34,14 @@
 
 #include <datasketches/cuda/detail/hll/preamble.hpp>
 
-using datasketches::cuda::detail::HLL_PREAMBLE_BYTES;
-using datasketches::cuda::detail::preamble_fields;
+using datasketches::cuda::detail::hll::PREAMBLE_BYTES;
+using datasketches::cuda::detail::hll::preamble_fields;
 
 TEST_CASE("preamble round-trip", "[preamble]")
 {
   preamble_fields f{};
   f.lgK                 = 12;
-  f.mode                = datasketches::cuda::detail::hll_mode_hll;
+  f.mode                = datasketches::cuda::detail::hll::mode_hll;
   f.tgt                 = ::datasketches::HLL_8;
   f.is_empty            = false;
   f.is_compact          = true;
@@ -55,9 +55,9 @@ TEST_CASE("preamble round-trip", "[preamble]")
   f.aux_lg_int_arr_size = 0;
   f.aux_count           = 0;
 
-  auto bytes = datasketches::cuda::detail::assemble_preamble(f);
-  ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES> sp{bytes.data(), HLL_PREAMBLE_BYTES};
-  auto parsed = datasketches::cuda::detail::parse_preamble(sp);
+  auto bytes = datasketches::cuda::detail::hll::assemble_preamble(f);
+  ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> sp{bytes.data(), PREAMBLE_BYTES};
+  auto parsed = datasketches::cuda::detail::hll::parse_preamble(sp);
 
   REQUIRE(parsed.lgK == f.lgK);
   REQUIRE(parsed.mode == f.mode);
@@ -84,15 +84,15 @@ TEST_CASE("preamble byte-compatible with datasketches::hll_sketch", "[preamble]"
     auto cpu_bytes = cpu.serialize_compact();
 
     // Parse the CPU bytes via our parser.
-    ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES> head{cpu_bytes.data(),
-                                                                   HLL_PREAMBLE_BYTES};
-    auto parsed = datasketches::cuda::detail::parse_preamble(head);
+    ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> head{cpu_bytes.data(),
+                                                                   PREAMBLE_BYTES};
+    auto parsed = datasketches::cuda::detail::hll::parse_preamble(head);
 
     // Re-assemble from the parsed fields.
-    auto round = datasketches::cuda::detail::assemble_preamble(parsed);
+    auto round = datasketches::cuda::detail::hll::assemble_preamble(parsed);
 
     INFO("lgK=" << int(lgK));
-    for (std::size_t i = 0; i < HLL_PREAMBLE_BYTES; ++i) {
+    for (std::size_t i = 0; i < PREAMBLE_BYTES; ++i) {
       INFO("byte " << i);
       REQUIRE(round[i] == cpu_bytes[i]);
     }
@@ -105,13 +105,13 @@ TEST_CASE("preamble parser rejects unsupported modes/targets", "[preamble]")
   // tgt to HLL_4/HLL_6 and confirm the parser throws.
   preamble_fields f{};
   f.lgK      = 12;
-  f.mode     = datasketches::cuda::detail::hll_mode_hll;
+  f.mode     = datasketches::cuda::detail::hll::mode_hll;
   f.tgt      = ::datasketches::HLL_8;
-  auto bytes = datasketches::cuda::detail::assemble_preamble(f);
+  auto bytes = datasketches::cuda::detail::hll::assemble_preamble(f);
 
   // mode = LIST
   bytes[::datasketches::hll_constants::MODE_BYTE] =
-    static_cast<uint8_t>((::datasketches::HLL_8 << 2) | datasketches::cuda::detail::hll_mode_list);
+    static_cast<uint8_t>((::datasketches::HLL_8 << 2) | datasketches::cuda::detail::hll::mode_list);
   // PREAMBLE_INTS == HLL_PREINTS still, so we hit the mode-check branch.
   // (Note: a real LIST blob would carry PREAMBLE_INTS=2, but we check the mode
   // byte path here which is the deserialize gate for non-HLL modes.)
@@ -119,17 +119,17 @@ TEST_CASE("preamble parser rejects unsupported modes/targets", "[preamble]")
   // mode-check specifically, we keep PREAMBLE_INTS=HLL_PREINTS and rely on the
   // mode byte being non-HLL.
   REQUIRE_THROWS_AS(
-    datasketches::cuda::detail::parse_preamble(
-      ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES>{bytes.data(), HLL_PREAMBLE_BYTES}),
+    datasketches::cuda::detail::hll::parse_preamble(
+      ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{bytes.data(), PREAMBLE_BYTES}),
     std::invalid_argument);
 
   // tgt = HLL_4
-  auto bytes_hll4 = datasketches::cuda::detail::assemble_preamble(f);
+  auto bytes_hll4 = datasketches::cuda::detail::hll::assemble_preamble(f);
   bytes_hll4[::datasketches::hll_constants::MODE_BYTE] =
-    static_cast<uint8_t>((::datasketches::HLL_4 << 2) | datasketches::cuda::detail::hll_mode_hll);
-  REQUIRE_THROWS_AS(datasketches::cuda::detail::parse_preamble(
-                      ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES>{
-                        bytes_hll4.data(), HLL_PREAMBLE_BYTES}),
+    static_cast<uint8_t>((::datasketches::HLL_4 << 2) | datasketches::cuda::detail::hll::mode_hll);
+  REQUIRE_THROWS_AS(datasketches::cuda::detail::hll::parse_preamble(
+                      ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{
+                        bytes_hll4.data(), PREAMBLE_BYTES}),
                     std::invalid_argument);
 }
 
@@ -140,16 +140,16 @@ TEST_CASE("preamble parser rejects out-of-range lgK", "[preamble]")
   // caller shifts `1 << lgK` (avoiding UB for lgK >= 64).
   preamble_fields f{};
   f.lgK      = 12;
-  f.mode     = datasketches::cuda::detail::hll_mode_hll;
+  f.mode     = datasketches::cuda::detail::hll::mode_hll;
   f.tgt      = ::datasketches::HLL_8;
-  auto bytes = datasketches::cuda::detail::assemble_preamble(f);
+  auto bytes = datasketches::cuda::detail::hll::assemble_preamble(f);
 
   for (uint8_t bad_lgK : {uint8_t{0}, uint8_t{3}, uint8_t{22}, uint8_t{64}, uint8_t{255}}) {
     INFO("bad lgK = " << int(bad_lgK));
     bytes[::datasketches::hll_constants::LG_K_BYTE] = bad_lgK;
-    REQUIRE_THROWS_AS(datasketches::cuda::detail::parse_preamble(
-                        ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES>{
-                          bytes.data(), HLL_PREAMBLE_BYTES}),
+    REQUIRE_THROWS_AS(datasketches::cuda::detail::hll::parse_preamble(
+                        ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{
+                          bytes.data(), PREAMBLE_BYTES}),
                       std::invalid_argument);
   }
 }

@@ -46,7 +46,7 @@
 
 #include <cuda/experimental/__cuco/hash_functions.cuh>
 
-namespace datasketches::cuda::detail {
+namespace datasketches::cuda::detail::hll {
 
 // Inner hasher: MurmurHash3_x64_128 operating on uint64_t (the canonical
 // 8-byte representation after normalization).
@@ -121,4 +121,4 @@ class normalizing_hasher {
   }
 };
 
-}  // namespace datasketches::cuda::detail
+}  // namespace datasketches::cuda::detail::hll

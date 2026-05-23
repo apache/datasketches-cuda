@@ -39,11 +39,11 @@
 
 #include <datasketches/cuda/detail/common/error.hpp>
 #include <datasketches/cuda/detail/hll/composite_finalizer.hpp>
-#include <datasketches/cuda/detail/hll/datasketches_policy.cuh>
+#include <datasketches/cuda/detail/hll/policy.cuh>
 #include <datasketches/cuda/detail/hll/preamble.hpp>
 #include <datasketches/cuda/detail/hll/reduction_state.hpp>
 
-namespace datasketches::cuda::detail {
+namespace datasketches::cuda::detail::hll {
 
 // Implementation behind the public `datasketches::cuda::hll_sketch` handle.
 // Owns the cudax HyperLogLog sketch, the stream paired with it (either an
@@ -67,9 +67,9 @@ namespace datasketches::cuda::detail {
 template <class Key,
           class MR                   = ::cuda::device_memory_pool_ref,
           ::cuda::thread_scope Scope = ::cuda::thread_scope_device>
-struct hll_sketch_impl {
+struct sketch_impl {
   using key_type      = Key;
-  using policy_type   = datasketches_policy<Key>;
+  using policy_type   = policy<Key>;
   using register_type = typename policy_type::register_type;
 
   using cudax_hll = ::cuda::experimental::cuco::hyperloglog<Key, MR, Scope, policy_type>;
@@ -95,7 +95,7 @@ struct hll_sketch_impl {
   // Two overloads: own a stream on device 0, or borrow the caller's stream.
 
   // Owned stream on device 0.
-  hll_sketch_impl(std::uint8_t lgK, ::datasketches::target_hll_type tgt, MR mr)
+  sketch_impl(std::uint8_t lgK, ::datasketches::target_hll_type tgt, MR mr)
     : stream_(std::in_place_type<::cuda::stream>, ::cuda::devices[0]),
       inner_(std::move(mr),
              precision{static_cast<int>(lgK)},
@@ -108,10 +108,10 @@ struct hll_sketch_impl {
   }
 
   // Borrowed stream. Caller's stream is recorded by cudax for later async-free.
-  hll_sketch_impl(std::uint8_t lgK,
-                  ::datasketches::target_hll_type tgt,
-                  MR mr,
-                  ::cuda::stream_ref user_stream)
+  sketch_impl(std::uint8_t lgK,
+              ::datasketches::target_hll_type tgt,
+              MR mr,
+              ::cuda::stream_ref user_stream)
     : stream_(user_stream),
       inner_(std::move(mr), precision{static_cast<int>(lgK)}, policy_type{}, user_stream),
       lg_config_k_(lgK),
@@ -120,10 +120,10 @@ struct hll_sketch_impl {
     check_target_(tgt);
   }
 
-  hll_sketch_impl(const hll_sketch_impl&)            = delete;
-  hll_sketch_impl& operator=(const hll_sketch_impl&) = delete;
-  hll_sketch_impl(hll_sketch_impl&&)                 = default;
-  ~hll_sketch_impl()                                 = default;
+  sketch_impl(const sketch_impl&)            = delete;
+  sketch_impl& operator=(const sketch_impl&) = delete;
+  sketch_impl(sketch_impl&&)                 = default;
+  ~sketch_impl()                             = default;
 
   // Move assignment via swap-and-destroy. The defaulted member-wise version
   // would move-assign stream_ first; in the owned-stream case that destroys
@@ -135,10 +135,10 @@ struct hll_sketch_impl {
   // with its still-valid paired stream. Every swap is a handle/pointer
   // exchange -- no device copy or allocation. Works for both alternatives
   // of the variant (owned stream and borrowed stream_ref).
-  hll_sketch_impl& operator=(hll_sketch_impl&& other) noexcept
+  sketch_impl& operator=(sketch_impl&& other) noexcept
   {
     if (this != &other) {
-      hll_sketch_impl tmp(std::move(other));
+      sketch_impl tmp(std::move(other));
       using std::swap;
       swap(stream_, tmp.stream_);
       swap(inner_, tmp.inner_);
@@ -202,7 +202,7 @@ struct hll_sketch_impl {
 
     preamble_fields f{};
     f.lgK                 = lg_config_k_;
-    f.mode                = hll_mode_hll;
+    f.mode                = mode_hll;
     f.tgt                 = ::datasketches::HLL_8;
     f.is_empty            = (snap.reduction.num_at_cur_min == configK);
     f.is_compact          = compact;
@@ -218,7 +218,7 @@ struct hll_sketch_impl {
 
     auto preamble = assemble_preamble(f);
     std::vector<std::uint8_t> out;
-    out.reserve(HLL_PREAMBLE_BYTES + configK);
+    out.reserve(PREAMBLE_BYTES + configK);
     out.insert(out.end(), preamble.begin(), preamble.end());
     for (std::size_t i = 0; i < configK; ++i) {
       out.push_back(static_cast<std::uint8_t>(snap.registers[i]));
@@ -232,17 +232,17 @@ struct hll_sketch_impl {
   // any unsupported mode/target or size mismatch.
   static preamble_fields parse_and_validate(::cuda::std::span<const std::uint8_t> bytes)
   {
-    if (bytes.size() < HLL_PREAMBLE_BYTES) {
+    if (bytes.size() < PREAMBLE_BYTES) {
       throw std::invalid_argument(
         "datasketches::cuda::hll_sketch::deserialize: byte span shorter than 40-byte preamble");
     }
-    ::cuda::std::span<const std::uint8_t, HLL_PREAMBLE_BYTES> head{bytes.data(),
-                                                                   HLL_PREAMBLE_BYTES};
+    ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> head{bytes.data(),
+                                                                   PREAMBLE_BYTES};
     // parse_preamble validates lgK against the supported range (4..21) before
     // returning, so the shift below is safe.
     const auto pf              = parse_preamble(head);
     const std::size_t configK  = std::size_t{1} << pf.lgK;
-    const std::size_t expected = HLL_PREAMBLE_BYTES + configK;
+    const std::size_t expected = PREAMBLE_BYTES + configK;
     if (bytes.size() != expected) {
       throw std::invalid_argument(
         "datasketches::cuda::hll_sketch::deserialize: byte span size != preamble + 2^lgK");
@@ -257,7 +257,7 @@ struct hll_sketch_impl {
     const std::size_t configK = std::size_t{1} << lg_config_k_;
     std::vector<std::int32_t> host_regs(configK);
     for (std::size_t i = 0; i < configK; ++i) {
-      host_regs[i] = static_cast<std::int32_t>(bytes[HLL_PREAMBLE_BYTES + i]);
+      host_regs[i] = static_cast<std::int32_t>(bytes[PREAMBLE_BYTES + i]);
     }
     auto byte_span             = inner_.sketch();
     const ::cuda::stream_ref s = stream();
@@ -335,25 +335,25 @@ struct hll_sketch_impl {
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge(const hll_sketch_impl<Key, OtherMR, OtherScope>& other)
+  void merge(const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
     inner_.merge(other.inner_, stream());
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge(const hll_sketch_impl<Key, OtherMR, OtherScope>& other, ::cuda::stream_ref s)
+  void merge(const sketch_impl<Key, OtherMR, OtherScope>& other, ::cuda::stream_ref s)
   {
     inner_.merge(other.inner_, s);
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge_async(const hll_sketch_impl<Key, OtherMR, OtherScope>& other)
+  void merge_async(const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
     inner_.merge_async(other.inner_, stream());
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge_async(const hll_sketch_impl<Key, OtherMR, OtherScope>& other, ::cuda::stream_ref s)
+  void merge_async(const sketch_impl<Key, OtherMR, OtherScope>& other, ::cuda::stream_ref s)
   {
     inner_.merge_async(other.inner_, s);
   }
@@ -392,4 +392,4 @@ struct hll_sketch_impl {
   std::size_t num_registers() const noexcept { return std::size_t{1} << lg_config_k_; }
 };
 
-}  // namespace datasketches::cuda::detail
+}  // namespace datasketches::cuda::detail::hll

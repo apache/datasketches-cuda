@@ -39,10 +39,10 @@
 //!   DATASKETCHES_CUDA_TRY(cudaMallocAsync(&p, n, stream));
 //!   DATASKETCHES_CUDA_TRY(cudaMallocAsync(&p, n, stream), std::runtime_error);
 //! @endcode
-#define DATASKETCHES_CUDA_TRY(...)                                                               \
-  GET_DATASKETCHES_CUDA_TRY_MACRO(__VA_ARGS__, DATASKETCHES_CUDA_TRY_2, DATASKETCHES_CUDA_TRY_1) \
+#define DATASKETCHES_CUDA_TRY(...)                                                              \
+  DATASKETCHES_CUDA_TRY_DISPATCH(__VA_ARGS__, DATASKETCHES_CUDA_TRY_2, DATASKETCHES_CUDA_TRY_1) \
   (__VA_ARGS__)
-#define GET_DATASKETCHES_CUDA_TRY_MACRO(_1, _2, NAME, ...) NAME
+#define DATASKETCHES_CUDA_TRY_DISPATCH(_1, _2, NAME, ...) NAME
 #define DATASKETCHES_CUDA_TRY_2(_call, _exception_type)                                         \
   do {                                                                                          \
     cudaError_t const status__ = (_call);                                                       \

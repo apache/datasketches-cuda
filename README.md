@@ -54,9 +54,9 @@ auto bytes = sketch.serialize_compact();          // GPU -> CPU wire format
 auto cpu   = datasketches::hll_sketch::deserialize(bytes.data(), bytes.size());
 ```
 
-`hll_sketch` is a thin handle around `detail::hll_sketch_impl`, which in turn
+`hll_sketch` is a thin handle around `detail::hll::sketch_impl`, which in turn
 owns a `cuda::experimental::cuco::hyperloglog` parameterized by a
-`datasketches_policy` (matching hash, bit-slicing, and seed). Constructors
+`detail::hll::policy` (matching hash, bit-slicing, and seed). Constructors
 either own a `cuda::stream` on device 0 or borrow a caller-supplied
 `cuda::stream_ref`; see the Doxygen on `hll.hpp` for the lifetime contract on
 the borrowed-stream overloads.

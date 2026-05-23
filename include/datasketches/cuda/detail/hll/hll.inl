@@ -225,7 +225,7 @@ template <class Key, class MR, ::cuda::thread_scope Scope>
 hll_sketch<Key, MR, Scope> hll_sketch<Key, MR, Scope>::deserialize(
   ::cuda::std::span<const std::uint8_t> bytes, MR mr)
 {
-  const auto pf = detail::hll_sketch_impl<Key, MR, Scope>::parse_and_validate(bytes);
+  const auto pf = detail::hll::sketch_impl<Key, MR, Scope>::parse_and_validate(bytes);
   hll_sketch sketch(pf.lgK, HLL_8, std::move(mr));
   sketch.impl_.load_registers(bytes);
   return sketch;
@@ -236,7 +236,7 @@ template <class Key, class MR, ::cuda::thread_scope Scope>
 hll_sketch<Key, MR, Scope> hll_sketch<Key, MR, Scope>::deserialize(
   ::cuda::std::span<const std::uint8_t> bytes, MR mr, ::cuda::stream_ref stream)
 {
-  const auto pf = detail::hll_sketch_impl<Key, MR, Scope>::parse_and_validate(bytes);
+  const auto pf = detail::hll::sketch_impl<Key, MR, Scope>::parse_and_validate(bytes);
   hll_sketch sketch(pf.lgK, HLL_8, std::move(mr), stream);
   sketch.impl_.load_registers(bytes);
   return sketch;

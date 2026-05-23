@@ -24,7 +24,7 @@
 
 #include <inv_pow2_table.hpp>
 
-namespace datasketches::cuda::detail {
+namespace datasketches::cuda::detail::hll {
 
 //! @brief State produced by the wider reduction over an HLL_8 register array.
 //!
@@ -102,4 +102,4 @@ inline reduction_result reduce_hll8(::cuda::std::span<const std::int32_t> regist
   return r;
 }
 
-}  // namespace datasketches::cuda::detail
+}  // namespace datasketches::cuda::detail::hll

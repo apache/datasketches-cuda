@@ -35,7 +35,7 @@
 // collision with this upstream header.
 #include <hll.hpp>
 
-#include <datasketches/cuda/detail/hll/hll_sketch_impl.hpp>
+#include <datasketches/cuda/detail/hll/sketch_impl.hpp>
 
 namespace datasketches::cuda {
 
@@ -76,7 +76,7 @@ using ::datasketches::HLL_8;
 //! `sketch.update(..., other_stream)`.
 //!
 //! This class is a thin handle. All state and logic live in
-//! `detail::hll_sketch_impl`; every method here is a one-line forwarder
+//! `detail::hll::sketch_impl`; every method here is a one-line forwarder
 //! defined out-of-class in `detail/hll/hll.inl`.
 //!
 //! @tparam Key The item type the sketch counts. Supported primitive types
@@ -96,8 +96,8 @@ template <class Key,
 class hll_sketch {
  public:
   using key_type      = Key;
-  using policy_type   = typename detail::hll_sketch_impl<Key, MR, Scope>::policy_type;
-  using register_type = typename detail::hll_sketch_impl<Key, MR, Scope>::register_type;
+  using policy_type   = typename detail::hll::sketch_impl<Key, MR, Scope>::policy_type;
+  using register_type = typename detail::hll::sketch_impl<Key, MR, Scope>::register_type;
 
   //! @brief Construct a sketch with an owned stream on device 0.
   //!
@@ -128,7 +128,7 @@ class hll_sketch {
   hll_sketch(hll_sketch&&)                 = default;
   //! @note Move assignment routes through the impl's custom swap-based
   //! operator to keep the (stream, inner-sketch) pair intact across the
-  //! assignment. See `detail::hll_sketch_impl::operator=(&&)`.
+  //! assignment. See `detail::hll::sketch_impl::operator=(&&)`.
   hll_sketch& operator=(hll_sketch&&) = default;
   ~hll_sketch()                       = default;
 
@@ -265,7 +265,7 @@ class hll_sketch {
   template <class K_, class M_, ::cuda::thread_scope S_>
   friend class hll_sketch;
 
-  detail::hll_sketch_impl<Key, MR, Scope> impl_;
+  detail::hll::sketch_impl<Key, MR, Scope> impl_;
 };
 
 }  // namespace datasketches::cuda
