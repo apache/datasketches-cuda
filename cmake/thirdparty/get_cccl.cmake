@@ -15,12 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# NVIDIA/cccl provides CCCL (which includes cudax). Pinned at the merge commit of
-# the cudax HLL policy template parameter PR (cccl#8857, merged 2026-05-14).
+# NVIDIA/cccl provides CCCL (which includes cudax). This project is still under
+# active development against unreleased cudax HyperLogLog APIs, so use CCCL main
+# for now instead of a released tag.
 #
-# TODO(find_package): once NVIDIA/cccl ships a tagged release that contains commit
-# 5d79bc23cf9e116b5a9139e5bb85d6d8464a6836, replace the CPMAddPackage call below
-# with the find_package-first pattern, e.g.:
+# TODO(find_package): once NVIDIA/cccl ships a tagged release containing the
+# required cudax HyperLogLog policy and explicit stream / memory-resource APIs,
+# replace the CPMAddPackage call below with the find_package-first pattern, e.g.:
 #
 #   find_package(CCCL X.Y.Z CONFIG QUIET COMPONENTS cudax)
 #   if(CCCL_FOUND)
@@ -28,11 +29,6 @@
 #     return()
 #   endif()
 #   message(STATUS "datasketches_cuda: CCCL >= X.Y.Z not found -- fetching via CPM")
-#
-# As of 2026-05-20 the commit is on NVIDIA/cccl main only - not in any release
-# up to v3.3.3. Until a tag ships we always CPM-fetch to guarantee the feature is
-# present. Verifying:
-#   git merge-base --is-ancestor 5d79bc23cf... <tag>  → returned false for all tags.
 #
 # CCCL_ENABLE_UNSTABLE must stay ON: cccl/CMakeLists.txt gates CCCL_ENABLE_CUDAX
 # behind it, and hll/include/hll_sketch.hpp uses cuda::experimental::cuco::hyperloglog.
@@ -44,12 +40,12 @@ endif()
 
 function(find_and_configure_cccl)
   message(WARNING
-    "datasketches_cuda: fetching CCCL@5d79bc23cf via CPM "
-    "(TODO cudax HLL policy not yet in any released tag)")
+    "datasketches_cuda: fetching CCCL@main via CPM "
+    "(TODO switch to a released CCCL version once required cudax HLL APIs are tagged)")
   CPMAddPackage(
     NAME CCCL
     GITHUB_REPOSITORY NVIDIA/cccl
-    GIT_TAG 5d79bc23cf9e116b5a9139e5bb85d6d8464a6836
+    GIT_TAG main
     GIT_SHALLOW FALSE
     OPTIONS
       "CCCL_ENABLE_TESTING OFF"

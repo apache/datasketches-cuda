@@ -79,7 +79,7 @@ Required:
 
 Fetched automatically via CPM at configure time (no manual install required):
 
-- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `5d79bc23cf...` (cudax HLL policy template parameter; not yet in a tagged release as of CCCL `main`)
+- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — currently fetched from `main` while this library develops against unreleased cudax HLL APIs. This should move to a versioned CCCL release once the required APIs are tagged.
 - [apache/datasketches-cpp](https://github.com/apache/datasketches-cpp) `5.2.0` (fall-back if `find_package(DataSketches 5.0.0 CONFIG)` does not locate a system install)
 - [Catch2](https://github.com/catchorg/Catch2) `3.5.3` (test-only)
 
@@ -136,5 +136,5 @@ any extra setup.
 - **HLL_8 only.** `HLL_4` and `HLL_6` packing are not yet implemented; constructing with those throws `std::invalid_argument`. `AuxHashMap` (the HLL_4 exception table) is also pending.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
-- **CCCL pin to a non-released commit.** Until upstream tags a CCCL release containing the cudax HLL policy machinery, `cmake/thirdparty/get_cccl.cmake` CPM-fetches a specific commit and emits a warning at configure time. `get_cccl.cmake` carries a `TODO(find_package)` block for the future switch to a version-guarded `find_package` lookup.
+- **CCCL tracks `main` during active development.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` CPM-fetches `NVIDIA/cccl:main` and emits a warning at configure time. `get_cccl.cmake` carries a `TODO(find_package)` block for the future switch to a version-guarded release lookup.
 - **No driver on some dev hosts.** CI gates the runtime parity test (`parity_test.cu`); host-only tests (preamble, reduction state, normalizing hasher, composite finalizer, policy compile) pass without a GPU.
