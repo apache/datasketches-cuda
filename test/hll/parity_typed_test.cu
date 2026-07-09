@@ -34,6 +34,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cuda/devices>
+#include <cuda/memory_pool>
+#include <cuda/stream>
 #include <limits>
 #include <random>
 #include <vector>
@@ -65,9 +68,11 @@ void compare_cpu_gpu(const std::vector<T>& keys, uint8_t lgK)
 
   // GPU sketch
   thrust::device_vector<T> dev_keys = keys;
-  datasketches::cuda::hll_sketch<T> gpu(lgK);
-  gpu.update(dev_keys.begin(), dev_keys.end());
-  auto gpu_bytes = gpu.serialize_compact();
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<T> gpu(stream, mr, lgK);
+  gpu.update(stream, dev_keys.begin(), dev_keys.end());
+  auto gpu_bytes = gpu.serialize_compact(stream);
 
   REQUIRE(cpu_bytes.size() == gpu_bytes.size());
   REQUIRE(cpu_bytes.size() == REG_OFF + (std::size_t{1} << lgK));

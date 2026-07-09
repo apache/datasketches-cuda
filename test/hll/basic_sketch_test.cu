@@ -23,11 +23,11 @@
 
 #include <cstdint>
 #include <cuda/devices>
+#include <cuda/memory_pool>
 #include <cuda/stream>
 #include <random>
 #include <vector>
 
-#include <cuda/__memory_pool/device_memory_pool.h>
 #include <thrust/device_vector.h>
 
 #include <catch2/catch_approx.hpp>
@@ -54,10 +54,12 @@ void run_case(uint8_t lgK, uint64_t n, uint64_t seed)
 
   thrust::device_vector<uint64_t> dev_keys = host_keys;
 
-  datasketches::cuda::hll_sketch<uint64_t> sketch(lgK);
-  sketch.update(dev_keys.begin(), dev_keys.end());
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> sketch(stream, mr, lgK);
+  sketch.update(stream, dev_keys.begin(), dev_keys.end());
 
-  const double est   = sketch.get_estimate();
+  const double est   = sketch.get_estimate(stream);
   const double bound = three_sigma_bound(lgK);
   const double rel   = std::abs(est - static_cast<double>(n)) / static_cast<double>(n);
 
@@ -80,16 +82,22 @@ TEST_CASE("HLL_8 estimate within 3-sigma RSE", "[hll_sketch][basic]")
 
 TEST_CASE("HLL_8 throws on non-HLL_8 target", "[hll_sketch][basic]")
 {
-  REQUIRE_THROWS_AS((datasketches::cuda::hll_sketch<uint64_t>(12, datasketches::cuda::HLL_4)),
-                    std::invalid_argument);
-  REQUIRE_THROWS_AS((datasketches::cuda::hll_sketch<uint64_t>(12, datasketches::cuda::HLL_6)),
-                    std::invalid_argument);
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  REQUIRE_THROWS_AS(
+    (datasketches::cuda::hll_sketch<uint64_t>(stream, mr, 12, datasketches::cuda::HLL_4)),
+    std::invalid_argument);
+  REQUIRE_THROWS_AS(
+    (datasketches::cuda::hll_sketch<uint64_t>(stream, mr, 12, datasketches::cuda::HLL_6)),
+    std::invalid_argument);
 }
 
 TEST_CASE("HLL_8 is_empty after construction", "[hll_sketch][basic]")
 {
-  datasketches::cuda::hll_sketch<uint64_t> sketch(12);
-  REQUIRE(sketch.is_empty());
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> sketch(stream, mr, 12);
+  REQUIRE(sketch.is_empty(stream));
   REQUIRE(sketch.get_lg_config_k() == 12);
   REQUIRE(sketch.get_target_type() == datasketches::cuda::HLL_8);
   REQUIRE(sketch.num_registers() == 4096u);
@@ -103,22 +111,22 @@ TEST_CASE("HLL_8 lower_bound <= estimate <= upper_bound", "[hll_sketch][basic]")
     k = rng();
   thrust::device_vector<uint64_t> dev_keys = host_keys;
 
-  datasketches::cuda::hll_sketch<uint64_t> sketch(12);
-  sketch.update(dev_keys.begin(), dev_keys.end());
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> sketch(stream, mr, 12);
+  sketch.update(stream, dev_keys.begin(), dev_keys.end());
 
-  const double lb = sketch.get_lower_bound(2);
-  const double e  = sketch.get_estimate();
-  const double ub = sketch.get_upper_bound(2);
+  const double lb = sketch.get_lower_bound(stream, 2);
+  const double e  = sketch.get_estimate(stream);
+  const double ub = sketch.get_upper_bound(stream, 2);
   REQUIRE(lb <= e);
   REQUIRE(e <= ub);
 }
 
-TEST_CASE("HLL_8 ctor borrows a user-supplied stream", "[hll_sketch][basic][stream]")
+TEST_CASE("HLL_8 ctor uses caller-supplied stream and memory resource",
+          "[hll_sketch][basic][stream]")
 {
   using Catch::Approx;
-
-  // Caller owns the stream; the sketch borrows it through its lifetime.
-  ::cuda::stream user_stream{::cuda::devices[0]};
 
   constexpr uint8_t lgK = 12;
   constexpr uint64_t n  = 100'000;
@@ -129,30 +137,21 @@ TEST_CASE("HLL_8 ctor borrows a user-supplied stream", "[hll_sketch][basic][stre
     k = rng();
   thrust::device_vector<uint64_t> dev_keys = host_keys;
 
-  datasketches::cuda::hll_sketch<uint64_t> borrowed(
-    lgK,
-    datasketches::cuda::HLL_8,
-    ::cuda::device_default_memory_pool(::cuda::devices[0]),
-    user_stream);
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> a(stream, mr, lgK);
+  datasketches::cuda::hll_sketch<uint64_t> b(stream, mr, lgK);
 
-  // The sketch's paired stream is the caller's, not a new owned one.
-  REQUIRE(borrowed.stream().get() == user_stream.get());
+  a.update(stream, dev_keys.begin(), dev_keys.end());
+  b.update(stream, dev_keys.begin(), dev_keys.end());
 
-  borrowed.update(dev_keys.begin(), dev_keys.end());
-
-  // Same keys + same lgK + same hash on an owned-stream sketch yields the
-  // same register array (atomic-max is order-invariant), so estimates match.
-  datasketches::cuda::hll_sketch<uint64_t> owned(lgK);
-  owned.update(dev_keys.begin(), dev_keys.end());
-
-  REQUIRE(borrowed.get_estimate() == Approx(owned.get_estimate()).epsilon(1e-12));
+  REQUIRE(a.get_estimate(stream) == Approx(b.get_estimate(stream)).epsilon(1e-12));
 }
 
-TEST_CASE("HLL_8 deserialize borrows a user-supplied stream", "[hll_sketch][basic][stream]")
+TEST_CASE("HLL_8 deserialize uses caller-supplied stream and memory resource",
+          "[hll_sketch][basic][stream]")
 {
   using Catch::Approx;
-
-  ::cuda::stream user_stream{::cuda::devices[0]};
 
   constexpr uint8_t lgK = 12;
   constexpr uint64_t n  = 100'000;
@@ -163,15 +162,14 @@ TEST_CASE("HLL_8 deserialize borrows a user-supplied stream", "[hll_sketch][basi
     k = rng();
   thrust::device_vector<uint64_t> dev_keys = host_keys;
 
-  datasketches::cuda::hll_sketch<uint64_t> src(lgK);
-  src.update(dev_keys.begin(), dev_keys.end());
-  const auto bytes = src.serialize_compact();
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> src(stream, mr, lgK);
+  src.update(stream, dev_keys.begin(), dev_keys.end());
+  const auto bytes = src.serialize_compact(stream);
 
   auto dst = datasketches::cuda::hll_sketch<uint64_t>::deserialize(
-    ::cuda::std::span<const std::uint8_t>{bytes.data(), bytes.size()},
-    ::cuda::device_default_memory_pool(::cuda::devices[0]),
-    user_stream);
+    stream, ::cuda::std::span<const std::uint8_t>{bytes.data(), bytes.size()}, mr);
 
-  REQUIRE(dst.stream().get() == user_stream.get());
-  REQUIRE(dst.get_estimate() == Approx(src.get_estimate()).epsilon(1e-12));
+  REQUIRE(dst.get_estimate(stream) == Approx(src.get_estimate(stream)).epsilon(1e-12));
 }

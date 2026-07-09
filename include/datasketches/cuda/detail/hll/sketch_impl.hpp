@@ -21,12 +21,10 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cuda/devices>
 #include <cuda/std/span>
 #include <cuda/stream>
 #include <stdexcept>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -46,24 +44,17 @@
 namespace datasketches::cuda::detail::hll {
 
 // Implementation behind the public `datasketches::cuda::hll_sketch` handle.
-// Owns the cudax HyperLogLog sketch, the stream paired with it (either an
-// owned `cuda::stream` constructed for this sketch, or a borrowed
-// `cuda::stream_ref` supplied by the caller), and the precision / target
-// metadata. All operations live here; the handle is a thin forwarder.
+// Owns the cudax HyperLogLog sketch and the precision / target metadata. All
+// operations live here; the handle is a thin forwarder.
 //
 // Declared as a `struct` because everything is intended for use by the handle
 // (or by other impl methods); there is no user-facing API surface to protect
 // with access control. Pattern mirrors cudax's `__hyperloglog_impl` behind
 // `cuda::experimental::cuco::hyperloglog`.
 //
-// Stream lifetime:
-//   - If constructed with a caller-supplied `stream_ref`, the sketch borrows
-//     it: the caller MUST keep that stream alive for the sketch's lifetime.
-//     The destructor issues `cudaFreeAsync` on the borrowed stream via
-//     cudax's internal deleter; a stream destroyed before the sketch is UB.
-//   - If constructed without a stream, the sketch owns a `cuda::stream` on
-//     device 0. Member declaration order ensures the owned stream outlives
-//     `inner_`.
+// Stream lifetime: the caller must keep the stream supplied at construction
+// alive until the sketch is destroyed. The backing cudax object may use that
+// stream for async deallocation.
 template <class Key,
           class MR                   = ::cuda::device_memory_pool_ref,
           ::cuda::thread_scope Scope = ::cuda::thread_scope_device>
@@ -75,98 +66,40 @@ struct sketch_impl {
   using cudax_hll = ::cuda::experimental::cuco::hyperloglog<Key, MR, Scope, policy_type>;
   using precision = typename cudax_hll::precision;
 
-  // Member declaration order matters: stream_ must precede inner_ so that
-  // for the owned-stream case, the stream destructs AFTER inner_ has released
-  // its device buffer (which was allocated on that stream). For the borrowed
-  // case, lifetime is on the caller; cudax internally holds the underlying
-  // cudaStream_t handle from the stream_ref and uses it for cudaFreeAsync.
-  std::variant<::cuda::stream, ::cuda::stream_ref> stream_;
-  cudax_hll inner_;
   std::uint8_t lg_config_k_;
   ::datasketches::target_hll_type tgt_;
+  cudax_hll inner_;
 
   struct host_snapshot_t {
     std::vector<register_type> registers;
     reduction_result reduction;
   };
 
-  // ----- ctors -----
-  //
-  // Two overloads: own a stream on device 0, or borrow the caller's stream.
-
-  // Owned stream on device 0.
-  sketch_impl(std::uint8_t lgK, ::datasketches::target_hll_type tgt, MR mr)
-    : stream_(std::in_place_type<::cuda::stream>, ::cuda::devices[0]),
-      inner_(std::move(mr),
-             precision{static_cast<int>(lgK)},
-             policy_type{},
-             std::get<::cuda::stream>(stream_)),
-      lg_config_k_(lgK),
-      tgt_(tgt)
-  {
-    check_target_(tgt);
-  }
-
-  // Borrowed stream. Caller's stream is recorded by cudax for later async-free.
-  sketch_impl(std::uint8_t lgK,
-              ::datasketches::target_hll_type tgt,
+  sketch_impl(::cuda::stream_ref stream,
               MR mr,
-              ::cuda::stream_ref user_stream)
-    : stream_(user_stream),
-      inner_(std::move(mr), precision{static_cast<int>(lgK)}, policy_type{}, user_stream),
-      lg_config_k_(lgK),
-      tgt_(tgt)
+              std::uint8_t lgK,
+              ::datasketches::target_hll_type tgt)
+    : lg_config_k_(lgK),
+      tgt_(check_target_(tgt)),
+      inner_(std::move(mr), precision{static_cast<int>(lgK)}, policy_type{}, stream)
   {
-    check_target_(tgt);
   }
 
   sketch_impl(const sketch_impl&)            = delete;
   sketch_impl& operator=(const sketch_impl&) = delete;
   sketch_impl(sketch_impl&&)                 = default;
   ~sketch_impl()                             = default;
-
-  // Move assignment via swap-and-destroy. The defaulted member-wise version
-  // would move-assign stream_ first; in the owned-stream case that destroys
-  // *this*'s old CUDA stream before inner_ has a chance to release its
-  // device buffer (which was allocated on that stream), producing
-  // cudaFreeAsync against an invalid stream handle. The swap-based form
-  // keeps each (stream_, inner_) pair intact: tmp takes over the incoming
-  // sketch, swaps with *this*, then destructs the original *this* state
-  // with its still-valid paired stream. Every swap is a handle/pointer
-  // exchange -- no device copy or allocation. Works for both alternatives
-  // of the variant (owned stream and borrowed stream_ref).
-  sketch_impl& operator=(sketch_impl&& other) noexcept
-  {
-    if (this != &other) {
-      sketch_impl tmp(std::move(other));
-      using std::swap;
-      swap(stream_, tmp.stream_);
-      swap(inner_, tmp.inner_);
-      swap(lg_config_k_, tmp.lg_config_k_);
-      swap(tgt_, tmp.tgt_);
-    }
-    return *this;
-  }
-
-  // ----- stream accessor -----
-
-  // Returns a stream_ref to whichever alternative the variant holds:
-  // - cuda::stream  -> implicit conversion to stream_ref
-  // - stream_ref    -> identity
-  // The variant's invariants guarantee one alternative is always active.
-  ::cuda::stream_ref stream() const noexcept
-  {
-    return std::visit([](const auto& s) noexcept -> ::cuda::stream_ref { return s; }, stream_);
-  }
+  sketch_impl& operator=(sketch_impl&&)      = default;
 
   // ----- internal helpers -----
 
-  static void check_target_(::datasketches::target_hll_type tgt)
+  static ::datasketches::target_hll_type check_target_(::datasketches::target_hll_type tgt)
   {
     if (tgt != ::datasketches::HLL_8) {
       throw std::invalid_argument(
         "datasketches::cuda::hll_sketch supports only target_hll_type::HLL_8");
     }
+    return tgt;
   }
 
   // D2H copy of the register array + wider reduction. Used by everything that
@@ -183,7 +116,7 @@ struct sketch_impl {
                                           configK * sizeof(register_type),
                                           cudaMemcpyDeviceToHost,
                                           s.get()));
-    DATASKETCHES_CUDA_TRY(cudaStreamSynchronize(s.get()));
+    s.sync();
     snap.reduction = reduce_hll8(
       ::cuda::std::span<const register_type>{snap.registers.data(), snap.registers.size()},
       lg_config_k_);
@@ -236,8 +169,7 @@ struct sketch_impl {
       throw std::invalid_argument(
         "datasketches::cuda::hll_sketch::deserialize: byte span shorter than 40-byte preamble");
     }
-    ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> head{bytes.data(),
-                                                                   PREAMBLE_BYTES};
+    ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> head{bytes.data(), PREAMBLE_BYTES};
     // parse_preamble validates lgK against the supported range (4..21) before
     // returning, so the shift below is safe.
     const auto pf              = parse_preamble(head);
@@ -250,64 +182,44 @@ struct sketch_impl {
     return pf;
   }
 
-  // H2D copy of the register bytes into this sketch's device buffer. Uses
-  // the sketch's stream. Synchronizes so the registers are visible by return.
-  void load_registers(::cuda::std::span<const std::uint8_t> bytes)
+  // H2D copy of the register bytes into this sketch's device buffer.
+  // Synchronizes so the registers are visible by return.
+  void load_registers(::cuda::stream_ref s, ::cuda::std::span<const std::uint8_t> bytes)
   {
     const std::size_t configK = std::size_t{1} << lg_config_k_;
     std::vector<register_type> host_regs(configK);
     for (std::size_t i = 0; i < configK; ++i) {
       host_regs[i] = static_cast<register_type>(bytes[PREAMBLE_BYTES + i]);
     }
-    auto byte_span             = inner_.sketch();
-    const ::cuda::stream_ref s = stream();
+    auto byte_span = inner_.sketch();
     DATASKETCHES_CUDA_TRY(cudaMemcpyAsync(byte_span.data(),
                                           host_regs.data(),
                                           configK * sizeof(register_type),
                                           cudaMemcpyHostToDevice,
                                           s.get()));
-    DATASKETCHES_CUDA_TRY(cudaStreamSynchronize(s.get()));
+    s.sync();
   }
 
   // ----- operations -----
 
   template <class InputIt>
-  void update(InputIt first, InputIt last)
-  {
-    inner_.add(first, last, stream());
-  }
-
-  template <class InputIt>
-  void update(InputIt first, InputIt last, ::cuda::stream_ref s)
+  void update(::cuda::stream_ref s, InputIt first, InputIt last)
   {
     inner_.add(first, last, s);
   }
 
   template <class InputIt>
-  void update_async(InputIt first, InputIt last)
-  {
-    inner_.add_async(first, last, stream());
-  }
-
-  template <class InputIt>
-  void update_async(InputIt first, InputIt last, ::cuda::stream_ref s)
+  void update_async(::cuda::stream_ref s, InputIt first, InputIt last)
   {
     inner_.add_async(first, last, s);
   }
-
-  double get_estimate() const { return get_estimate(stream()); }
 
   double get_estimate(::cuda::stream_ref s) const
   {
     return estimate_from_(snapshot_(s).reduction, lg_config_k_);
   }
 
-  double get_lower_bound(std::uint8_t numStdDev) const
-  {
-    return get_lower_bound(numStdDev, stream());
-  }
-
-  double get_lower_bound(std::uint8_t numStdDev, ::cuda::stream_ref s) const
+  double get_lower_bound(::cuda::stream_ref s, std::uint8_t numStdDev) const
   {
     ::datasketches::HllUtil<>::checkNumStdDev(numStdDev);
     const auto rs               = snapshot_(s).reduction;
@@ -320,12 +232,7 @@ struct sketch_impl {
     return std::max(estimate / (1.0 + relErr), numNonZeros);
   }
 
-  double get_upper_bound(std::uint8_t numStdDev) const
-  {
-    return get_upper_bound(numStdDev, stream());
-  }
-
-  double get_upper_bound(std::uint8_t numStdDev, ::cuda::stream_ref s) const
+  double get_upper_bound(::cuda::stream_ref s, std::uint8_t numStdDev) const
   {
     ::datasketches::HllUtil<>::checkNumStdDev(numStdDev);
     const double estimate = get_estimate(s);
@@ -335,25 +242,13 @@ struct sketch_impl {
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge(const sketch_impl<Key, OtherMR, OtherScope>& other)
-  {
-    inner_.merge(other.inner_, stream());
-  }
-
-  template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge(const sketch_impl<Key, OtherMR, OtherScope>& other, ::cuda::stream_ref s)
+  void merge(::cuda::stream_ref s, const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
     inner_.merge(other.inner_, s);
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge_async(const sketch_impl<Key, OtherMR, OtherScope>& other)
-  {
-    inner_.merge_async(other.inner_, stream());
-  }
-
-  template <class OtherMR, ::cuda::thread_scope OtherScope>
-  void merge_async(const sketch_impl<Key, OtherMR, OtherScope>& other, ::cuda::stream_ref s)
+  void merge_async(::cuda::stream_ref s, const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
     inner_.merge_async(other.inner_, s);
   }
@@ -361,27 +256,15 @@ struct sketch_impl {
   std::uint8_t get_lg_config_k() const noexcept { return lg_config_k_; }
   ::datasketches::target_hll_type get_target_type() const noexcept { return tgt_; }
 
-  bool is_empty() const { return is_empty(stream()); }
-
   bool is_empty(::cuda::stream_ref s) const
   {
     const auto rs = snapshot_(s).reduction;
     return rs.num_at_cur_min == (1u << lg_config_k_);
   }
 
-  std::vector<std::uint8_t> serialize_compact() const
-  {
-    return serialize_(/*compact=*/true, stream());
-  }
-
   std::vector<std::uint8_t> serialize_compact(::cuda::stream_ref s) const
   {
     return serialize_(/*compact=*/true, s);
-  }
-
-  std::vector<std::uint8_t> serialize_updatable() const
-  {
-    return serialize_(/*compact=*/false, stream());
   }
 
   std::vector<std::uint8_t> serialize_updatable(::cuda::stream_ref s) const

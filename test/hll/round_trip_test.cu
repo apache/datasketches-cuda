@@ -30,6 +30,9 @@
 //   - bytes 40+: exact (register array)
 
 #include <cstdint>
+#include <cuda/devices>
+#include <cuda/memory_pool>
+#include <cuda/stream>
 #include <random>
 #include <vector>
 
@@ -87,12 +90,14 @@ void compare_round_trip(const std::vector<uint8_t>& cpu, const std::vector<uint8
 
 TEST_CASE("CPU -> GPU.deserialize -> GPU.serialize round-trip", "[round_trip]")
 {
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
   for (uint8_t lgK : {uint8_t{8}, uint8_t{12}, uint8_t{16}}) {
     const uint64_t n = (uint64_t{1} << lgK) * 64;
     auto cpu         = cpu_bytes(lgK, n, 0xC0DEBA5EULL ^ lgK);
     auto gpu         = datasketches::cuda::hll_sketch<uint64_t>::deserialize(
-      ::cuda::std::span<const std::uint8_t>{cpu.data(), cpu.size()});
-    auto round = gpu.serialize_compact();
+      stream, ::cuda::std::span<const std::uint8_t>{cpu.data(), cpu.size()}, mr);
+    auto round = gpu.serialize_compact(stream);
     INFO("lgK=" << int(lgK) << " n=" << n);
     compare_round_trip(cpu, round);
   }
@@ -105,9 +110,11 @@ TEST_CASE("GPU.serialize FLAGS forces oooFlag=true", "[round_trip]")
   // CPU bytes are from incremental update with start_full_size, so oooFlag=false.
   REQUIRE((cpu[5] & 0x10) == 0);
 
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr  = ::cuda::device_default_memory_pool(::cuda::devices[0]);
   auto gpu = datasketches::cuda::hll_sketch<uint64_t>::deserialize(
-    ::cuda::std::span<const std::uint8_t>{cpu.data(), cpu.size()});
-  auto round = gpu.serialize_compact();
+    stream, ::cuda::std::span<const std::uint8_t>{cpu.data(), cpu.size()}, mr);
+  auto round = gpu.serialize_compact(stream);
   // GPU re-serialize forces oooFlag=true.
   REQUIRE((round[5] & 0x10) != 0);
 

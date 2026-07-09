@@ -19,7 +19,7 @@
 
 // End-to-end CPU/GPU parity gate. Feeds the same N keys + lgK to both
 // `datasketches::hll_sketch(lgK, HLL_8, start_full_size=true)` and
-// `datasketches::cuda::hll_sketch<uint64_t>(lgK, HLL_8)`. Compares:
+// `datasketches::cuda::hll_sketch<uint64_t>(stream, mr, lgK, HLL_8)`. Compares:
 //   - Register bytes (offset 40+) byte-for-byte (proves hash + bit-slicing parity).
 //   - kxq0/kxq1/numAtCurMin in the preamble (deterministic from registers).
 //   - Estimates within the 3-sigma RSE bound.
@@ -30,6 +30,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cuda/devices>
+#include <cuda/memory_pool>
+#include <cuda/stream>
 #include <random>
 #include <vector>
 
@@ -69,9 +72,11 @@ void run(uint8_t lgK, uint64_t n, uint64_t seed)
 
   // GPU side.
   thrust::device_vector<uint64_t> dev_keys = keys;
-  datasketches::cuda::hll_sketch<uint64_t> gpu(lgK);
-  gpu.update(dev_keys.begin(), dev_keys.end());
-  auto gpu_bytes = gpu.serialize_compact();
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> gpu(stream, mr, lgK);
+  gpu.update(stream, dev_keys.begin(), dev_keys.end());
+  auto gpu_bytes = gpu.serialize_compact(stream);
 
   REQUIRE(cpu_bytes.size() == gpu_bytes.size());
   REQUIRE(cpu_bytes.size() == REG_OFF + (1u << lgK));
@@ -102,7 +107,7 @@ void run(uint8_t lgK, uint64_t n, uint64_t seed)
   // both sides apply Composite (CPU side via the patched-FLAGS path -- see
   // composite_finalizer_test.cpp), CPU and GPU estimates differ only by the
   // CPU's HIP estimator selection, so we compare against `n`.
-  const double gpu_est = gpu.get_estimate();
+  const double gpu_est = gpu.get_estimate(stream);
   const double bound   = three_sigma_bound(lgK);
   const double rel     = std::abs(gpu_est - static_cast<double>(n)) / static_cast<double>(n);
   INFO("lgK=" << int(lgK) << " n=" << n << " gpu_est=" << gpu_est << " rel=" << rel

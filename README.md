@@ -44,22 +44,27 @@ and HLL variants are on the roadmap (see [Known Issues](#known-issues)).
 Public header:
 
 ```cpp
+#include <cuda/devices>
+#include <cuda/stream>
 #include <datasketches/cuda/hll.hpp>
 
-datasketches::cuda::hll_sketch<std::uint64_t> sketch(/*lgK=*/12);
-sketch.update(dev_keys.begin(), dev_keys.end());
-double estimate = sketch.get_estimate();
+cuda::stream stream{cuda::devices[0]};
+auto mr = cuda::device_default_memory_pool(cuda::devices[0]);
 
-auto bytes = sketch.serialize_compact();          // GPU -> CPU wire format
+datasketches::cuda::hll_sketch<std::uint64_t> sketch(stream, mr, /*lgK=*/12);
+sketch.update(stream, dev_keys.begin(), dev_keys.end());
+double estimate = sketch.get_estimate(stream);
+
+auto bytes = sketch.serialize_compact(stream);    // GPU -> CPU wire format
 auto cpu   = datasketches::hll_sketch::deserialize(bytes.data(), bytes.size());
 ```
 
 `hll_sketch` is a thin handle around `detail::hll::sketch_impl`, which in turn
 owns a `cuda::experimental::cuco::hyperloglog` parameterized by a
-`detail::hll::policy` (matching hash, bit-slicing, and seed). Constructors
-either own a `cuda::stream` on device 0 or borrow a caller-supplied
-`cuda::stream_ref`; see the Doxygen on `hll.hpp` for the lifetime contract on
-the borrowed-stream overloads.
+`detail::hll::policy` (matching hash, bit-slicing, and seed). Construction and
+CUDA-touching member functions take an explicit `cuda::stream_ref` as the first
+argument; construction and deserialization also require an explicit device
+memory resource.
 
 ## Build & Runtime Dependencies
 

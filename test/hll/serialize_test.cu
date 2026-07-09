@@ -22,6 +22,9 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cuda/devices>
+#include <cuda/memory_pool>
+#include <cuda/stream>
 #include <random>
 #include <vector>
 
@@ -46,15 +49,17 @@ TEST_CASE("GPU serialize bytes accepted by CPU deserialize", "[serialize]")
       k = rng();
     thrust::device_vector<uint64_t> dev_keys = host_keys;
 
-    datasketches::cuda::hll_sketch<uint64_t> gpu(lgK);
-    gpu.update(dev_keys.begin(), dev_keys.end());
+    ::cuda::stream stream{::cuda::devices[0]};
+    auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+    datasketches::cuda::hll_sketch<uint64_t> gpu(stream, mr, lgK);
+    gpu.update(stream, dev_keys.begin(), dev_keys.end());
 
-    auto bytes = gpu.serialize_compact();
+    auto bytes = gpu.serialize_compact(stream);
     REQUIRE(bytes.size() == 40u + (1u << lgK));
 
     auto cpu = ::datasketches::hll_sketch::deserialize(bytes.data(), bytes.size());
     INFO("lgK=" << int(lgK) << " n=" << n);
-    REQUIRE(cpu.get_estimate() == Approx(gpu.get_estimate()).epsilon(1e-12));
+    REQUIRE(cpu.get_estimate() == Approx(gpu.get_estimate(stream)).epsilon(1e-12));
   }
 }
 
@@ -69,13 +74,15 @@ TEST_CASE("GPU serialize -> GPU deserialize round-trip", "[serialize]")
     k = rng();
   thrust::device_vector<uint64_t> dev_keys = host_keys;
 
-  datasketches::cuda::hll_sketch<uint64_t> a(lgK);
-  a.update(dev_keys.begin(), dev_keys.end());
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> a(stream, mr, lgK);
+  a.update(stream, dev_keys.begin(), dev_keys.end());
 
-  auto bytes = a.serialize_compact();
+  auto bytes = a.serialize_compact(stream);
   auto b     = datasketches::cuda::hll_sketch<uint64_t>::deserialize(
-    ::cuda::std::span<const std::uint8_t>{bytes.data(), bytes.size()});
+    stream, ::cuda::std::span<const std::uint8_t>{bytes.data(), bytes.size()}, mr);
 
-  REQUIRE(a.get_estimate() == Approx(b.get_estimate()));
-  REQUIRE(a.serialize_compact() == b.serialize_compact());  // byte-equal
+  REQUIRE(a.get_estimate(stream) == Approx(b.get_estimate(stream)));
+  REQUIRE(a.serialize_compact(stream) == b.serialize_compact(stream));  // byte-equal
 }
