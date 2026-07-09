@@ -81,7 +81,7 @@ struct sketch_impl {
               ::datasketches::target_hll_type tgt)
     : lg_config_k_(lgK),
       tgt_(check_target_(tgt)),
-      inner_(std::move(mr), precision{static_cast<int>(lgK)}, policy_type{}, stream)
+      inner_(stream, std::move(mr), precision{static_cast<int>(lgK)}, policy_type{})
   {
   }
 
@@ -210,13 +210,13 @@ struct sketch_impl {
   template <class InputIt>
   void update(::cuda::stream_ref s, InputIt first, InputIt last)
   {
-    inner_.add(first, last, s);
+    inner_.add(s, first, last);
   }
 
   template <class InputIt>
   void update_async(::cuda::stream_ref s, InputIt first, InputIt last)
   {
-    inner_.add_async(first, last, s);
+    inner_.add_async(s, first, last);
   }
 
   double get_estimate(::cuda::stream_ref s) const
@@ -249,13 +249,13 @@ struct sketch_impl {
   template <class OtherMR, ::cuda::thread_scope OtherScope>
   void merge(::cuda::stream_ref s, const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
-    inner_.merge(other.inner_, s);
+    inner_.merge(s, other.inner_);
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
   void merge_async(::cuda::stream_ref s, const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
-    inner_.merge_async(other.inner_, s);
+    inner_.merge_async(s, other.inner_);
   }
 
   std::uint8_t get_lg_config_k() const noexcept { return lg_config_k_; }
