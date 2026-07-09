@@ -86,7 +86,7 @@ struct sketch_impl {
   ::datasketches::target_hll_type tgt_;
 
   struct host_snapshot_t {
-    std::vector<std::int32_t> registers;
+    std::vector<register_type> registers;
     reduction_result reduction;
   };
 
@@ -180,12 +180,12 @@ struct sketch_impl {
     const auto byte_span = inner_.sketch();
     DATASKETCHES_CUDA_TRY(cudaMemcpyAsync(snap.registers.data(),
                                           byte_span.data(),
-                                          configK * sizeof(std::int32_t),
+                                          configK * sizeof(register_type),
                                           cudaMemcpyDeviceToHost,
                                           s.get()));
     DATASKETCHES_CUDA_TRY(cudaStreamSynchronize(s.get()));
     snap.reduction = reduce_hll8(
-      ::cuda::std::span<const std::int32_t>{snap.registers.data(), snap.registers.size()},
+      ::cuda::std::span<const register_type>{snap.registers.data(), snap.registers.size()},
       lg_config_k_);
     return snap;
   }
@@ -255,15 +255,15 @@ struct sketch_impl {
   void load_registers(::cuda::std::span<const std::uint8_t> bytes)
   {
     const std::size_t configK = std::size_t{1} << lg_config_k_;
-    std::vector<std::int32_t> host_regs(configK);
+    std::vector<register_type> host_regs(configK);
     for (std::size_t i = 0; i < configK; ++i) {
-      host_regs[i] = static_cast<std::int32_t>(bytes[PREAMBLE_BYTES + i]);
+      host_regs[i] = static_cast<register_type>(bytes[PREAMBLE_BYTES + i]);
     }
     auto byte_span             = inner_.sketch();
     const ::cuda::stream_ref s = stream();
     DATASKETCHES_CUDA_TRY(cudaMemcpyAsync(byte_span.data(),
                                           host_regs.data(),
-                                          configK * sizeof(std::int32_t),
+                                          configK * sizeof(register_type),
                                           cudaMemcpyHostToDevice,
                                           s.get()));
     DATASKETCHES_CUDA_TRY(cudaStreamSynchronize(s.get()));

@@ -24,7 +24,12 @@
 
 #include <inv_pow2_table.hpp>
 
+#include <datasketches/cuda/detail/hll/policy.cuh>
+
 namespace datasketches::cuda::detail::hll {
+
+// Key is arbitrary: `policy::register_type` does not depend on the key type.
+using register_type = typename policy<std::int64_t>::register_type;
 
 //! @brief State produced by the wider reduction over an HLL_8 register array.
 //!
@@ -48,7 +53,7 @@ struct reduction_result {
 
 //! @brief Reduce an HLL_8 register array to the Composite-estimator state.
 //!
-//! Operates on the cudax HLL register storage, which is `int32_t` per slot
+//! Operates on the cudax HLL register storage (`register_type` per slot)
 //! holding rho directly in `[0, 63]`.
 //!
 //! For HLL_8, the CPU sketch maintains the invariant `curMin == 0` and
@@ -72,7 +77,7 @@ struct reduction_result {
 //! @param[in] lgK The HLL precision parameter; `registers.size()` must equal
 //!   `1 << lgK`.
 //! @return The reduction state ready to feed into `composite_finalizer`.
-inline reduction_result reduce_hll8(::cuda::std::span<const std::int32_t> registers,
+inline reduction_result reduce_hll8(::cuda::std::span<const register_type> registers,
                                     std::uint8_t lgK) noexcept
 {
   const std::uint32_t configK = 1u << lgK;

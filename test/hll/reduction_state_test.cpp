@@ -59,7 +59,7 @@ cpu_state extract(const std::vector<uint8_t>& bytes)
 }
 
 // Returns the CPU's wire-format state and `reduce_hll8` applied to the same
-// register array (widened to int32_t per cudax storage layout).
+// register array (widened to register_type per cudax storage layout).
 struct test_pair {
   cpu_state cpu;
   ::datasketches::cuda::detail::hll::reduction_result gpu_side;
@@ -75,15 +75,16 @@ test_pair run(uint8_t lgK, uint64_t n, uint64_t seed)
   auto bytes = sketch.serialize_compact();
 
   const std::uint32_t configK = 1u << lgK;
-  std::vector<std::int32_t> registers(configK);
+  using register_type         = ::datasketches::cuda::detail::hll::register_type;
+  std::vector<register_type> registers(configK);
   for (std::uint32_t i = 0; i < configK; ++i) {
-    registers[i] = static_cast<std::int32_t>(bytes[REG_OFF + i]);
+    registers[i] = static_cast<register_type>(bytes[REG_OFF + i]);
   }
 
   return {
     extract(bytes),
     ::datasketches::cuda::detail::hll::reduce_hll8(
-      ::cuda::std::span<const std::int32_t>{registers.data(), registers.size()}, lgK),
+      ::cuda::std::span<const register_type>{registers.data(), registers.size()}, lgK),
   };
 }
 
@@ -108,9 +109,10 @@ TEST_CASE("reduce_hll8 empty register array", "[reduction_state]")
 {
   const uint8_t lgK           = 12;
   const std::uint32_t configK = 1u << lgK;
-  std::vector<std::int32_t> zeros(configK, 0);
+  using register_type         = ::datasketches::cuda::detail::hll::register_type;
+  std::vector<register_type> zeros(configK, 0);
   auto r = ::datasketches::cuda::detail::hll::reduce_hll8(
-    ::cuda::std::span<const std::int32_t>{zeros.data(), zeros.size()}, lgK);
+    ::cuda::std::span<const register_type>{zeros.data(), zeros.size()}, lgK);
   REQUIRE(r.kxq0 == static_cast<double>(configK));
   REQUIRE(r.kxq1 == 0.0);
   REQUIRE(r.cur_min == 0);
@@ -122,9 +124,10 @@ TEST_CASE("reduce_hll8 all-saturated register array (rho=63)", "[reduction_state
   using Catch::Approx;
   const uint8_t lgK           = 8;
   const std::uint32_t configK = 1u << lgK;
-  std::vector<std::int32_t> sat(configK, 63);
+  using register_type         = ::datasketches::cuda::detail::hll::register_type;
+  std::vector<register_type> sat(configK, 63);
   auto r = ::datasketches::cuda::detail::hll::reduce_hll8(
-    ::cuda::std::span<const std::int32_t>{sat.data(), sat.size()}, lgK);
+    ::cuda::std::span<const register_type>{sat.data(), sat.size()}, lgK);
   REQUIRE(r.kxq0 == Approx(static_cast<double>(configK)));
   // Every register contributes (2^-63 - 1) to kxq1 (since 63 >= 32).
   // kxq1 = configK * (2^-63 - 1) -- a large negative number plus configK*2^-63.
