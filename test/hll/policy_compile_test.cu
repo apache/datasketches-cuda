@@ -33,6 +33,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <common_defs.hpp>
+
 #include <datasketches/cuda/detail/hll/policy.cuh>
 #include <datasketches/cuda/detail/hll/reduction_state.hpp>
 
@@ -50,14 +52,17 @@ static_assert(std::is_same_v<policy_t::register_type, ::std::int32_t>,
 static_assert(
   std::is_same_v<datasketches::cuda::detail::hll::register_type, policy_t::register_type>,
   "detail::hll::register_type must match policy::register_type");
-static_assert(policy_t::default_seed == 9001ULL,
-              "datasketches HLL default seed is 9001 (datasketches-cpp common_defs.hpp:34)");
+static_assert(policy_t::default_seed == datasketches::DEFAULT_SEED,
+              "policy::default_seed must stay pinned to datasketches-cpp DEFAULT_SEED "
+              "(common_defs.hpp:34)");
+static_assert(datasketches::cuda::detail::hll::default_seed == datasketches::DEFAULT_SEED,
+              "project-wide default_seed must stay pinned to datasketches-cpp DEFAULT_SEED");
 
 TEST_CASE("policy satisfies cudax concept", "[policy][compile]")
 {
   // The static_asserts above guarantee compile-time conformance. This runtime
   // check is just here to give Catch2 something to discover and execute.
-  REQUIRE(policy_t::default_seed == 9001ULL);
+  REQUIRE(policy_t::default_seed == datasketches::DEFAULT_SEED);
   static_cast<void>(sizeof(hll_t));
   static_cast<void>(sizeof(hll_ref_t));
 }

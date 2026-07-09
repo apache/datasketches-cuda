@@ -68,7 +68,8 @@ struct policy {
   using register_type    = ::cuda::std::int32_t;
 
   //! @brief Default datasketches HLL hash seed (`common_defs.hpp:34`).
-  static constexpr ::cuda::std::uint64_t default_seed = 9001;
+  //! Sourced from the single project-wide constant in `normalizing_hasher.cuh`.
+  static constexpr ::cuda::std::uint64_t default_seed = detail::hll::default_seed;
 
   hasher hasher_{default_seed};
 
@@ -115,9 +116,8 @@ struct policy {
   //! @param[in] __precision Unused; present for cudax policy concept conformance.
   //! @return rho, in `[1, 63]`.
   [[nodiscard]] __host__ __device__ constexpr ::cuda::std::uint8_t register_value(
-    hash_result_type __h, int __precision) const noexcept
+    hash_result_type __h, [[maybe_unused]] int __precision) const noexcept
   {
-    (void)__precision;
     const auto __h2  = static_cast<::cuda::std::uint64_t>(__h >> 64);
     const auto __lz  = static_cast<::cuda::std::uint8_t>(::cuda::std::countl_zero(__h2));
     const auto __cap = static_cast<::cuda::std::uint8_t>(__lz > 62 ? 62 : __lz);

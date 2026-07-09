@@ -54,12 +54,20 @@ using _murmur_u64 =
   ::cuda::experimental::cuco::hash<::cuda::std::uint64_t,
                                    ::cuda::experimental::cuco::hash_algorithm::murmurhash3_x64_128>;
 
+//! @brief Default datasketches HLL hash seed. Single source of truth for the
+//! seed across this project; mirrors datasketches-cpp `DEFAULT_SEED`
+//! (`common_defs.hpp:34`). Kept as a self-contained `constexpr` so the device
+//! headers need not include the heavy host-only `common_defs.hpp`. The value is
+//! pinned to upstream via a `static_assert` in `policy_compile_test.cu`.
+inline constexpr ::cuda::std::uint64_t default_seed = 9001;
+
 template <class _Key>
 class normalizing_hasher {
  public:
   using result_type = __uint128_t;
 
-  __host__ __device__ constexpr normalizing_hasher(::cuda::std::uint64_t __seed = 9001) noexcept
+  __host__ __device__ constexpr normalizing_hasher(
+    ::cuda::std::uint64_t __seed = default_seed) noexcept
     : _inner(__seed)
   {
   }
