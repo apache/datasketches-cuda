@@ -84,8 +84,7 @@ TEST_CASE("preamble byte-compatible with datasketches::hll_sketch", "[preamble]"
     auto cpu_bytes = cpu.serialize_compact();
 
     // Parse the CPU bytes via our parser.
-    ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> head{cpu_bytes.data(),
-                                                                   PREAMBLE_BYTES};
+    ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> head{cpu_bytes.data(), PREAMBLE_BYTES};
     auto parsed = datasketches::cuda::detail::hll::parse_preamble(head);
 
     // Re-assemble from the parsed fields.
@@ -127,10 +126,10 @@ TEST_CASE("preamble parser rejects unsupported modes/targets", "[preamble]")
   auto bytes_hll4 = datasketches::cuda::detail::hll::assemble_preamble(f);
   bytes_hll4[::datasketches::hll_constants::MODE_BYTE] =
     static_cast<uint8_t>((::datasketches::HLL_4 << 2) | datasketches::cuda::detail::hll::mode_hll);
-  REQUIRE_THROWS_AS(datasketches::cuda::detail::hll::parse_preamble(
-                      ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{
-                        bytes_hll4.data(), PREAMBLE_BYTES}),
-                    std::invalid_argument);
+  REQUIRE_THROWS_AS(
+    datasketches::cuda::detail::hll::parse_preamble(
+      ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{bytes_hll4.data(), PREAMBLE_BYTES}),
+    std::invalid_argument);
 }
 
 TEST_CASE("preamble parser rejects out-of-range lgK", "[preamble]")
@@ -147,9 +146,9 @@ TEST_CASE("preamble parser rejects out-of-range lgK", "[preamble]")
   for (uint8_t bad_lgK : {uint8_t{0}, uint8_t{3}, uint8_t{22}, uint8_t{64}, uint8_t{255}}) {
     INFO("bad lgK = " << int(bad_lgK));
     bytes[::datasketches::hll_constants::LG_K_BYTE] = bad_lgK;
-    REQUIRE_THROWS_AS(datasketches::cuda::detail::hll::parse_preamble(
-                        ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{
-                          bytes.data(), PREAMBLE_BYTES}),
-                      std::invalid_argument);
+    REQUIRE_THROWS_AS(
+      datasketches::cuda::detail::hll::parse_preamble(
+        ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES>{bytes.data(), PREAMBLE_BYTES}),
+      std::invalid_argument);
   }
 }

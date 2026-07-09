@@ -47,8 +47,9 @@ static_assert(std::is_same_v<policy_t::hash_result_type, __uint128_t>,
               "policy::hash_result_type must be __uint128_t");
 static_assert(std::is_same_v<policy_t::register_type, ::std::int32_t>,
               "policy::register_type must be int32_t");
-static_assert(std::is_same_v<datasketches::cuda::detail::hll::register_type, policy_t::register_type>,
-              "detail::hll::register_type must match policy::register_type");
+static_assert(
+  std::is_same_v<datasketches::cuda::detail::hll::register_type, policy_t::register_type>,
+  "detail::hll::register_type must match policy::register_type");
 static_assert(policy_t::default_seed == 9001ULL,
               "datasketches HLL default seed is 9001 (datasketches-cpp common_defs.hpp:34)");
 

@@ -22,9 +22,9 @@
 #include <cstdint>
 #include <cuda/std/span>
 
-#include <inv_pow2_table.hpp>
-
 #include <datasketches/cuda/detail/hll/policy.cuh>
+
+#include <inv_pow2_table.hpp>
 
 namespace datasketches::cuda::detail::hll {
 

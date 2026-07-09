@@ -75,7 +75,10 @@ struct policy {
   //! @brief Returns the underlying hash functor.
   //!
   //! @return The hash functor.
-  [[nodiscard]] __host__ __device__ constexpr hasher hash_function() const noexcept { return hasher_; }
+  [[nodiscard]] __host__ __device__ constexpr hasher hash_function() const noexcept
+  {
+    return hasher_;
+  }
 
   //! @brief Hashes an item.
   //!
@@ -128,7 +131,9 @@ struct policy {
   //! register array. See `composite_finalizer.hpp`.
   //!
   //! @return 0 unconditionally.
-  [[nodiscard]] __host__ __device__ static constexpr ::cuda::std::size_t finalize(double, int, int) noexcept
+  [[nodiscard]] __host__ __device__ static constexpr ::cuda::std::size_t finalize(double,
+                                                                                  int,
+                                                                                  int) noexcept
   {
     return 0;
   }

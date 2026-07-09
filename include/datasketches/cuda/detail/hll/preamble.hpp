@@ -106,8 +106,7 @@ inline std::array<std::uint8_t, PREAMBLE_BYTES> assemble_preamble(const preamble
 //!
 //! @param[in] bytes The 40 bytes to parse.
 //! @return Parsed preamble fields.
-inline preamble_fields parse_preamble(
-  ::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> bytes)
+inline preamble_fields parse_preamble(::cuda::std::span<const std::uint8_t, PREAMBLE_BYTES> bytes)
 {
   if (bytes[::datasketches::hll_constants::SER_VER_BYTE] !=
       ::datasketches::hll_constants::SER_VER) {
