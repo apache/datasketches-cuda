@@ -1,0 +1,55 @@
+{
+  "name": "datasketches-cuda-cuda13.3-gcc15",
+  "shutdownAction": "stopContainer",
+  "image": "rapidsai/devcontainers:26.08-cpp-gcc15-cuda13.3",
+  "workspaceFolder": "/home/coder/datasketches-cuda",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/coder/datasketches-cuda,type=bind",
+  "hostRequirements": {
+    "gpu": "optional"
+  },
+  "runArgs": [
+    "--init",
+    "--name",
+    "${localEnv:USER:anon}-${localWorkspaceFolderBasename}-datasketches-cuda13.3-gcc15",
+    "--ulimit",
+    "nofile=500000"
+  ],
+  "containerEnv": {
+    "CC": "gcc-15",
+    "CXX": "g++-15",
+    "CUDAHOSTCXX": "g++-15",
+    "CMAKE_GENERATOR": "Ninja",
+    "CPM_SOURCE_CACHE": "${containerWorkspaceFolder}/build/cpm-cache",
+    "NVCC_APPEND_FLAGS": "-t=100",
+    "DEVCONTAINER_NAME": "cuda13.3-gcc15",
+    "CCCL_CUDA_VERSION": "13.3",
+    "CCCL_HOST_COMPILER": "gcc",
+    "CCCL_HOST_COMPILER_VERSION": "15",
+    "CCCL_CUDA_EXTENDED": "false"
+  },
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd",
+        "seaube.clangformat",
+        "nvidia.nsight-vscode-edition",
+        "ms-vscode.cmake-tools",
+        "timonwong.shellcheck"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "seaube.clangformat",
+        "editor.formatOnSave": true,
+        "clang-format.executable": "/usr/bin/clang-format",
+        "clangd.arguments": [
+          "--header-insertion=never",
+          "--compile-commands-dir=${workspaceFolder}/build/devcontainer"
+        ],
+        "cmake.buildDirectory": "${workspaceFolder}/build/devcontainer",
+        "files.eol": "\n",
+        "files.trimTrailingWhitespace": true,
+        "shellcheck.useWorkspaceRootAsCwd": true
+      }
+    }
+  }
+}
