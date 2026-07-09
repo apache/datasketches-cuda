@@ -86,3 +86,24 @@ TEST_CASE("GPU serialize -> GPU deserialize round-trip", "[serialize]")
   REQUIRE(a.get_estimate(stream) == Approx(b.get_estimate(stream)));
   REQUIRE(a.serialize_compact(stream) == b.serialize_compact(stream));  // byte-equal
 }
+
+TEST_CASE("GPU deserialize rejects HLL_8 register bytes outside rho range", "[serialize]")
+{
+  constexpr std::size_t preamble_bytes = 40;
+
+  ::cuda::stream stream{::cuda::devices[0]};
+  auto mr = ::cuda::device_default_memory_pool(::cuda::devices[0]);
+  datasketches::cuda::hll_sketch<uint64_t> sketch(stream, mr, /*lgK=*/8);
+
+  auto bytes = sketch.serialize_compact(stream);
+  REQUIRE(bytes.size() == preamble_bytes + 256u);
+
+  for (std::uint8_t bad_value : {std::uint8_t{64}, std::uint8_t{255}}) {
+    INFO("bad register value " << int(bad_value));
+    bytes[preamble_bytes] = bad_value;
+    REQUIRE_THROWS_AS(
+      datasketches::cuda::hll_sketch<uint64_t>::deserialize(
+        stream, ::cuda::std::span<const std::uint8_t>{bytes.data(), bytes.size()}, mr),
+      std::invalid_argument);
+  }
+}

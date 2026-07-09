@@ -189,7 +189,12 @@ struct sketch_impl {
     const std::size_t configK = std::size_t{1} << lg_config_k_;
     std::vector<register_type> host_regs(configK);
     for (std::size_t i = 0; i < configK; ++i) {
-      host_regs[i] = static_cast<register_type>(bytes[PREAMBLE_BYTES + i]);
+      const auto value = bytes[PREAMBLE_BYTES + i];
+      if (value > 63) {
+        throw std::invalid_argument(
+          "datasketches::cuda::hll_sketch::deserialize: HLL_8 register value out of range");
+      }
+      host_regs[i] = static_cast<register_type>(value);
     }
     auto byte_span = inner_.sketch();
     DATASKETCHES_CUDA_TRY(cudaMemcpyAsync(byte_span.data(),
