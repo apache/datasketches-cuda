@@ -20,12 +20,11 @@
 #pragma once
 
 #include <cstdint>
+#include <cuda/memory_pool>
 #include <cuda/std/span>
 #include <cuda/stream>
 #include <utility>
 #include <vector>
-
-#include <cuda/__memory_pool/device_memory_pool.h>
 
 #include <hll.hpp>
 
@@ -52,7 +51,10 @@ using ::datasketches::HLL_8;
 //!
 //! **Stream lifetime.** The caller MUST keep the stream supplied at construction
 //! or deserialization alive until the sketch is destroyed. The backing cudax
-//! object may issue async deallocation work on that construction stream.
+//! object may issue async deallocation work on that construction stream. The
+//! caller must also ensure any streams used with `update_async` or `merge_async`
+//! have completed, or are otherwise ordered before the construction stream, before
+//! destroying the sketch.
 //!
 //! @tparam Key The item type the sketch counts. Supported primitive types
 //!   `int8/16/32/64_t`, `uint8/16/32/64_t`, `float`, `double`.
@@ -99,6 +101,9 @@ class hll_sketch {
   //! @param[in] stream CUDA stream this operation is enqueued in.
   //! @param[in] first Iterator to the first element to update.
   //! @param[in] last Iterator to the last element to update.
+  //!
+  //! @warning The caller must synchronize or order `stream` before destroying
+  //!   this sketch.
   template <class InputIt>
   void update_async(::cuda::stream_ref stream, InputIt first, InputIt last);
 
@@ -138,6 +143,9 @@ class hll_sketch {
   //!
   //! @param[in] stream CUDA stream this operation is enqueued in.
   //! @param[in] other The other sketch to merge into `*this`.
+  //!
+  //! @warning The caller must synchronize or order `stream` before destroying
+  //!   either sketch.
   template <class OtherMR, ::cuda::thread_scope OtherScope>
   void merge_async(::cuda::stream_ref stream, const hll_sketch<Key, OtherMR, OtherScope>& other);
 

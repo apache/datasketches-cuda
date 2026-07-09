@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cuda/memory_pool>
 #include <cuda/std/span>
 #include <cuda/stream>
 #include <stdexcept>
@@ -28,8 +29,6 @@
 #include <vector>
 
 #include <cuda_runtime.h>
-
-#include <cuda/__memory_pool/device_memory_pool.h>
 
 #include <cuda/experimental/__cuco/hyperloglog.cuh>
 
@@ -54,7 +53,8 @@ namespace datasketches::cuda::detail::hll {
 //
 // Stream lifetime: the caller must keep the stream supplied at construction
 // alive until the sketch is destroyed. The backing cudax object may use that
-// stream for async deallocation.
+// stream for async deallocation. Any streams used with async operations must
+// also be synchronized or ordered before destruction.
 template <class Key,
           class MR                   = ::cuda::device_memory_pool_ref,
           ::cuda::thread_scope Scope = ::cuda::thread_scope_device>

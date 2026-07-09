@@ -45,6 +45,7 @@ Public header:
 
 ```cpp
 #include <cuda/devices>
+#include <cuda/memory_pool>
 #include <cuda/stream>
 #include <datasketches/cuda/hll.hpp>
 
@@ -64,7 +65,8 @@ owns a `cuda::experimental::cuco::hyperloglog` parameterized by a
 `detail::hll::policy` (matching hash, bit-slicing, and seed). Construction and
 CUDA-touching member functions take an explicit `cuda::stream_ref` as the first
 argument; construction and deserialization also require an explicit device
-memory resource.
+memory resource. Streams used with `update_async` or `merge_async` must be
+synchronized or otherwise ordered before the sketch is destroyed.
 
 ## Build & Runtime Dependencies
 
