@@ -17,9 +17,11 @@
     under the License.
 -->
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.apache.datasketches/datasketches-cuda)](https://central.sonatype.com/artifact/org.apache.datasketches/datasketches-cuda)
-
 # Apache® DataSketches™ Core CUDA Library Component
+
+> **Note:** This project is experimental and under active development. APIs and
+> behavior may change without notice.
+
 This is the core CUDA component of the DataSketches library.  It contains sketching algorithms that can be accessed directly from user applications.
 
 Note that we have parallel core library components for Java, C++, Python, GO, and Rush implementations of many of the same sketch algorithms:
@@ -79,7 +81,7 @@ Required:
 
 Fetched automatically via CPM at configure time (no manual install required):
 
-- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — currently fetched from `main` while this library develops against unreleased cudax HLL APIs. This should move to a versioned CCCL release once the required APIs are tagged.
+- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `c95f99757cf95044ce82b905eec88ff40c851f7b` as synthetic version `3.5.1` while this library develops against unreleased cudax HLL APIs. This should move to a real CCCL release once the required APIs are tagged.
 - [apache/datasketches-cpp](https://github.com/apache/datasketches-cpp) `5.2.0` (fall-back if `find_package(DataSketches 5.0.0 CONFIG)` does not locate a system install)
 - [Catch2](https://github.com/catchorg/Catch2) `3.5.3` (test-only)
 
@@ -136,5 +138,5 @@ any extra setup.
 - **HLL_8 only.** `HLL_4` and `HLL_6` packing are not yet implemented; constructing with those throws `std::invalid_argument`. `AuxHashMap` (the HLL_4 exception table) is also pending.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
-- **CCCL tracks `main` during active development.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` CPM-fetches `NVIDIA/cccl:main` and emits a warning at configure time. `get_cccl.cmake` carries a `TODO(find_package)` block for the future switch to a version-guarded release lookup.
+- **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.1` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
 - **No driver on some dev hosts.** CI gates the runtime parity test (`parity_test.cu`); host-only tests (preamble, reduction state, normalizing hasher, composite finalizer, policy compile) pass without a GPU.
