@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
 #include <cuda/memory_pool>
 #include <cuda/std/span>
@@ -35,21 +34,19 @@
 #include <hll.hpp>
 
 #include <datasketches/cuda/detail/common/error.hpp>
-#include <datasketches/cuda/detail/hll/composite_finalizer.hpp>
 #include <datasketches/cuda/detail/hll/policy.cuh>
 #include <datasketches/cuda/detail/hll/preamble.hpp>
 #include <datasketches/cuda/detail/hll/reduction_state.hpp>
+#include <datasketches/cuda/detail/hll/sketch_ref_impl.cuh>
 
 namespace datasketches::cuda::detail::hll {
 
-// Implementation behind the public `datasketches::cuda::hll_sketch` handle.
-// Owns the cudax HyperLogLog sketch and the precision / target metadata. All
-// operations live here; the handle is a thin forwarder.
+// Owning implementation behind `datasketches::cuda::hll_sketch`. It owns the
+// cudax HyperLogLog, precision/target metadata, and serialization machinery.
+// Shared sketch operations delegate through an on-demand `sketch_ref_impl`.
 //
-// Declared as a `struct` because everything is intended for use by the handle
-// (or by other impl methods); there is no user-facing API surface to protect
-// with access control. Pattern mirrors cudax's `__hyperloglog_impl` behind
-// `cuda::experimental::cuco::hyperloglog`.
+// Declared as a `struct` because everything is intended for use by the public
+// handle or by other implementation methods.
 //
 // Stream lifetime: the caller must keep the stream supplied at construction
 // alive until the sketch is destroyed. The backing cudax object may use that
@@ -62,6 +59,7 @@ struct sketch_impl {
   using key_type      = Key;
   using policy_type   = policy<Key>;
   using register_type = typename policy_type::register_type;
+  using ref_impl_type = sketch_ref_impl<Key, Scope>;
 
   using cudax_hll = ::cuda::experimental::cuco::hyperloglog<Key, MR, Scope, policy_type>;
   using precision = typename cudax_hll::precision;
@@ -102,15 +100,13 @@ struct sketch_impl {
     return tgt;
   }
 
-  // D2H copy of the register array + wider reduction. Used by everything that
-  // reads the sketch state (estimate, bounds, is_empty, serialize). Returning
-  // the host buffer lets `serialize_` avoid a second D2H.
+  // D2H copy of the register array + wider reduction used by serialization.
   host_snapshot_t snapshot_(::cuda::stream_ref s) const
   {
     const std::size_t configK = std::size_t{1} << lg_config_k_;
     host_snapshot_t snap;
     snap.registers.resize(configK);
-    const auto byte_span = inner_.sketch();
+    const auto byte_span = ref().sketch();
     DATASKETCHES_CUDA_TRY(cudaMemcpyAsync(snap.registers.data(),
                                           byte_span.data(),
                                           configK * sizeof(register_type),
@@ -121,11 +117,6 @@ struct sketch_impl {
       ::cuda::std::span<const register_type>{snap.registers.data(), snap.registers.size()},
       lg_config_k_);
     return snap;
-  }
-
-  static double estimate_from_(const reduction_result& r, std::uint8_t lgK)
-  {
-    return composite_finalizer(r.kxq0 + r.kxq1, r.cur_min, r.num_at_cur_min, lgK);
   }
 
   std::vector<std::uint8_t> serialize_(bool compact, ::cuda::stream_ref s) const
@@ -196,7 +187,7 @@ struct sketch_impl {
       }
       host_regs[i] = static_cast<register_type>(value);
     }
-    auto byte_span = inner_.sketch();
+    auto byte_span = ref().sketch();
     DATASKETCHES_CUDA_TRY(cudaMemcpyAsync(byte_span.data(),
                                           host_regs.data(),
                                           configK * sizeof(register_type),
@@ -210,62 +201,51 @@ struct sketch_impl {
   template <class InputIt>
   void update(::cuda::stream_ref s, InputIt first, InputIt last)
   {
-    inner_.add(s, first, last);
+    ref().update(s, first, last);
   }
 
   template <class InputIt>
   void update_async(::cuda::stream_ref s, InputIt first, InputIt last)
   {
-    inner_.add_async(s, first, last);
+    ref().update_async(s, first, last);
   }
+
+  [[nodiscard]] ref_impl_type ref() const noexcept { return ref_impl_type{inner_.ref()}; }
 
   double get_estimate(::cuda::stream_ref s) const
   {
-    return estimate_from_(snapshot_(s).reduction, lg_config_k_);
+    return static_cast<double>(ref().get_estimate(s));
   }
 
   double get_lower_bound(::cuda::stream_ref s, std::uint8_t numStdDev) const
   {
-    ::datasketches::HllUtil<>::checkNumStdDev(numStdDev);
-    const auto rs               = snapshot_(s).reduction;
-    const std::uint32_t configK = 1u << lg_config_k_;
-    const double numNonZeros = (rs.cur_min == 0) ? static_cast<double>(configK - rs.num_at_cur_min)
-                                                 : static_cast<double>(configK);
-    const double estimate    = estimate_from_(rs, lg_config_k_);
-    const double relErr      = ::datasketches::HllUtil<>::getRelErr(
-      /*upperBound=*/false, /*unioned=*/true, lg_config_k_, numStdDev);
-    return std::max(estimate / (1.0 + relErr), numNonZeros);
+    return ref().get_lower_bound(s, numStdDev);
   }
 
   double get_upper_bound(::cuda::stream_ref s, std::uint8_t numStdDev) const
   {
-    ::datasketches::HllUtil<>::checkNumStdDev(numStdDev);
-    const double estimate = get_estimate(s);
-    const double relErr   = ::datasketches::HllUtil<>::getRelErr(
-      /*upperBound=*/true, /*unioned=*/true, lg_config_k_, numStdDev);
-    return estimate / (1.0 + relErr);
+    return ref().get_upper_bound(s, numStdDev);
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
   void merge(::cuda::stream_ref s, const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
-    inner_.merge(s, other.inner_);
+    ref().merge(s, other.ref());
   }
 
   template <class OtherMR, ::cuda::thread_scope OtherScope>
   void merge_async(::cuda::stream_ref s, const sketch_impl<Key, OtherMR, OtherScope>& other)
   {
-    inner_.merge_async(s, other.inner_);
+    ref().merge_async(s, other.ref());
   }
 
-  std::uint8_t get_lg_config_k() const noexcept { return lg_config_k_; }
-  ::datasketches::target_hll_type get_target_type() const noexcept { return tgt_; }
-
-  bool is_empty(::cuda::stream_ref s) const
+  std::uint8_t get_lg_config_k() const noexcept { return ref().get_lg_config_k(); }
+  ::datasketches::target_hll_type get_target_type() const noexcept
   {
-    const auto rs = snapshot_(s).reduction;
-    return rs.num_at_cur_min == (1u << lg_config_k_);
+    return ref().get_target_type();
   }
+
+  bool is_empty(::cuda::stream_ref s) const { return ref().is_empty(s); }
 
   std::vector<std::uint8_t> serialize_compact(::cuda::stream_ref s) const
   {
@@ -277,7 +257,7 @@ struct sketch_impl {
     return serialize_(/*compact=*/false, s);
   }
 
-  std::size_t num_registers() const noexcept { return std::size_t{1} << lg_config_k_; }
+  std::size_t num_registers() const noexcept { return ref().num_registers(); }
 };
 
 }  // namespace datasketches::cuda::detail::hll

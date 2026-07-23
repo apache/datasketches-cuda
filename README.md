@@ -43,7 +43,7 @@ HyperLogLog with the `HLL_8` target type, byte-compatible with
 `datasketches::hll_sketch` for round-trip serialization. Other sketch families
 and HLL variants are on the roadmap (see [Known Issues](#known-issues)).
 
-Public header:
+Owning-sketch public header:
 
 ```cpp
 #include <cuda/devices>
@@ -62,13 +62,44 @@ auto bytes = sketch.serialize_compact(stream);    // GPU -> CPU wire format
 auto cpu   = datasketches::hll_sketch::deserialize(bytes.data(), bytes.size());
 ```
 
-`hll_sketch` is a thin handle around `detail::hll::sketch_impl`, which in turn
-owns a `cuda::experimental::cuco::hyperloglog` parameterized by a
-`detail::hll::policy` (matching hash, bit-slicing, and seed). Construction and
-CUDA-touching member functions take an explicit `cuda::stream_ref` as the first
-argument; construction and deserialization also require an explicit device
-memory resource. Streams used with `update_async` or `merge_async` must be
-synchronized or otherwise ordered before the sketch is destroyed.
+`hll_sketch` is a thin handle around the owning
+`detail::hll::sketch_impl`. `hll_sketch_ref` similarly wraps the non-owning
+`detail::hll::sketch_ref_impl`. The owning implementation allocates a
+`cuda::experimental::cuco::hyperloglog` and creates ref implementations on
+demand; both public APIs therefore share the same CCCL-backed update, merge,
+query, and storage behavior. Construction and CUDA-touching owning methods take
+an explicit `cuda::stream_ref`; construction and deserialization also require
+an explicit device memory resource. Streams used with `update_async` or
+`merge_async` must be synchronized or otherwise ordered before destruction.
+
+Device code can operate on caller-managed HLL_8 register storage through
+`hll_sketch_ref`:
+
+```cpp
+#include <datasketches/cuda/hll_ref.cuh>
+
+using ref_type =
+  datasketches::cuda::hll_sketch_ref<std::uint64_t, cuda::thread_scope_device>;
+
+auto registers = cuda::std::span<std::int32_t>{device_ptr, std::size_t{1} << lgK};
+ref_type ref{cuda::std::as_writable_bytes(registers)};
+kernel<<<grid, block>>>(ref, device_keys, num_keys);
+```
+
+Construction does not initialize caller-owned storage. Device code must call
+`clear(group)` before first use unless the span already contains a valid
+sketch. The ref exposes cooperative `clear`, per-thread `update`, cooperative
+`merge`, block-cooperative and host `get_estimate`, confidence bounds,
+precision/target/register getters, and cooperative or host `is_empty`. The
+current CCCL estimate contract returns a truncated `size_t`; the owning sketch
+delegates to the same path and temporarily returns an integer-valued `double`.
+
+Storage must be aligned to `hll_sketch_ref::sketch_alignment()` and contain
+exactly `hll_sketch_ref::sketch_bytes(lgK)` bytes for lgK 4 through 18.
+`thread_scope_device` is required when multiple blocks update the sketch.
+`thread_scope_block` is valid only for storage exclusively accessed by one
+block. A ref obtained from `hll_sketch::ref()` must not outlive its owning
+sketch.
 
 ## Build & Runtime Dependencies
 
@@ -137,6 +168,7 @@ any extra setup.
 
 - **HLL_8 only.** `HLL_4` and `HLL_6` packing are not yet implemented; constructing with those throws `std::invalid_argument`. `AuxHashMap` (the HLL_4 exception table) is also pending.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
+- **Estimates are temporarily integral.** CCCL's current HLL ref estimate contract truncates the DataSketches Composite `double`. The owning API delegates to this path and converts that `size_t` to `double`. Host/device floating-point reduction differences may differ from a truncated CPU estimate by one count.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
 - **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.1` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
 - **No driver on some dev hosts.** CI gates the runtime parity test (`parity_test.cu`); host-only tests (preamble, reduction state, normalizing hasher, composite finalizer, policy compile) pass without a GPU.

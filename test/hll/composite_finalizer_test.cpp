@@ -17,7 +17,7 @@
  * under the License.
  */
 
-// Validates that `datasketches::cuda::detail::hll::composite_finalizer` produces the
+// Validates that `datasketches::cuda::detail::hll::composite_estimate` produces the
 // same result as `datasketches::hll_sketch::get_estimate()` when the CPU sketch
 // is forced into Composite mode (oooFlag=true).
 //
@@ -26,6 +26,7 @@
 // also use Composite (instead of HIP), the FLAGS byte is patched to set the
 // OOO bit before deserialize.
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <random>
@@ -36,7 +37,13 @@
 
 #include <hll.hpp>
 
-#include <datasketches/cuda/detail/hll/composite_finalizer.hpp>
+#include <datasketches/cuda/detail/hll/composite_finalizer.cuh>
+#include <datasketches/cuda/detail/hll/composite_interpolation_table.cuh>
+#include <datasketches/cuda/detail/hll/relative_error.cuh>
+
+#include <CompositeInterpolationXTable.hpp>
+#include <CubicInterpolation.hpp>
+#include <HarmonicNumbers.hpp>
 
 namespace {
 
@@ -67,7 +74,7 @@ cpu_state extract_state(const std::vector<uint8_t>& bytes)
 
 // Build an HLL_8 CPU sketch promoted into HLL mode by inserting `n` distinct
 // keys via `start_full_size=true`, then return:
-//   1. our composite_finalizer result, and
+//   1. our composite_estimate result, and
 //   2. CPU `get_estimate()` after patching the FLAGS byte to set OOO so that
 //      the CPU also returns Composite (not HIP).
 struct test_result {
@@ -92,8 +99,8 @@ test_result run(uint8_t lgK, uint64_t n, uint64_t seed)
   auto cpu_composite = ::datasketches::hll_sketch::deserialize(bytes.data(), bytes.size());
 
   return {
-    datasketches::cuda::detail::hll::composite_finalizer(
-      state.kxq0 + state.kxq1, state.cur_min, state.num_at_cur_min, lgK),
+    datasketches::cuda::detail::hll::composite_estimate(
+      state.kxq0 + state.kxq1, state.num_at_cur_min, lgK),
     cpu_composite.get_estimate(),
   };
 }
@@ -103,10 +110,10 @@ test_result run(uint8_t lgK, uint64_t n, uint64_t seed)
 TEST_CASE("composite_finalizer matches CPU getCompositeEstimate", "[composite_finalizer]")
 {
   using Catch::Approx;
-  // Cover lgK across the typical operating range and a few cardinality regimes
-  // to exercise the 0/cubic/linear/asymptote branches of the Composite blender.
-  for (uint8_t lgK : {uint8_t{8}, uint8_t{12}, uint8_t{16}}) {
-    for (uint64_t n : {uint64_t{50}, uint64_t{1'000}, uint64_t{100'000}, uint64_t{2'000'000}}) {
+  for (std::uint8_t lgK = 4; lgK <= 18; ++lgK) {
+    const std::uint64_t config_k = std::uint64_t{1} << lgK;
+    const std::uint64_t high_n   = config_k * 32 < 200'000 ? config_k * 32 : 200'000;
+    for (std::uint64_t n : {config_k / 4, config_k * 2, high_n}) {
       auto r = run(lgK, n, /*seed=*/0xC0FFEE0042 ^ (uint64_t(lgK) << 40) ^ n);
       INFO("lgK=" << int(lgK) << " n=" << n);
       REQUIRE(r.our_estimate == Approx(r.cpu_composite_estimate).epsilon(1e-12));
@@ -124,7 +131,71 @@ TEST_CASE("composite_finalizer empty sketch yields 0", "[composite_finalizer]")
   // For all-zero registers: kxq0+kxq1 = configK, raw = correctionFactor*configK, and
   // raw is well below xArr[0] for typical lgK.
   const double kxq_sum = static_cast<double>(configK);
-  const double our     = datasketches::cuda::detail::hll::composite_finalizer(
-    kxq_sum, /*curMin=*/0u, /*numAtCurMin=*/configK, lgK);
+  const double our =
+    datasketches::cuda::detail::hll::composite_estimate(kxq_sum, /*num_zeroes=*/configK, lgK);
   REQUIRE(our == Approx(0.0));
+}
+
+TEST_CASE("host interpolation tables match DataSketches C++", "[composite_finalizer][table]")
+{
+  using Catch::Approx;
+  namespace local = datasketches::cuda::detail::hll::composite_interpolation;
+
+  for (std::uint8_t lg_k = local::min_lg_k; lg_k <= local::max_lg_k; ++lg_k) {
+    const double* expected = ::datasketches::CompositeInterpolationXTable<>::get_x_arr(lg_k);
+    const double* actual   = local::x_values_for(lg_k);
+    REQUIRE(local::y_stride_for(lg_k) ==
+            ::datasketches::CompositeInterpolationXTable<>::get_y_stride(lg_k));
+
+    for (std::uint32_t i = 0; i < local::num_x_values; ++i) {
+      CAPTURE(lg_k, i);
+      REQUIRE(actual[i] == expected[i]);
+    }
+
+    const auto y_stride = local::y_stride_for(lg_k);
+    for (std::uint32_t i = 0; i + 1 < local::num_x_values; ++i) {
+      const double midpoint  = (actual[i] + actual[i + 1]) / 2.0;
+      const double reference = ::datasketches::CubicInterpolation<>::usingXArrAndYStride(
+        expected, static_cast<int>(local::num_x_values), y_stride, midpoint);
+      const double result =
+        datasketches::cuda::detail::hll::interpolate_composite(actual, y_stride, midpoint);
+      CAPTURE(lg_k, i, midpoint);
+      REQUIRE(result == Approx(reference).epsilon(1e-12));
+    }
+  }
+}
+
+TEST_CASE("host harmonic and bitmap estimators match DataSketches C++",
+          "[composite_finalizer][bitmap]")
+{
+  using Catch::Approx;
+  for (std::uint8_t lg_k = 4; lg_k <= 18; ++lg_k) {
+    const std::uint32_t config_k = 1u << lg_k;
+    for (std::uint32_t zeroes : {config_k, config_k / 2, 1u}) {
+      const auto hits        = config_k - zeroes;
+      const double reference = ::datasketches::HarmonicNumbers<>::getBitMapEstimate(config_k, hits);
+      CAPTURE(lg_k, zeroes);
+      REQUIRE(datasketches::cuda::detail::hll::bitmap_estimate(zeroes, lg_k) ==
+              Approx(reference).epsilon(1e-15));
+    }
+    REQUIRE(datasketches::cuda::detail::hll::bitmap_estimate(0, lg_k) ==
+            Approx(config_k * std::log(config_k / 0.5)).epsilon(1e-15));
+  }
+}
+
+TEST_CASE("non-HIP relative errors match DataSketches C++", "[relative_error]")
+{
+  using Catch::Approx;
+  for (std::uint8_t lg_k = 4; lg_k <= 18; ++lg_k) {
+    for (std::uint8_t num_std_dev = 1; num_std_dev <= 3; ++num_std_dev) {
+      for (bool upper_bound : {false, true}) {
+        const double expected =
+          ::datasketches::HllUtil<>::getRelErr(upper_bound, /*unioned=*/true, lg_k, num_std_dev);
+        const double actual =
+          datasketches::cuda::detail::hll::relative_error(upper_bound, lg_k, num_std_dev);
+        CAPTURE(lg_k, num_std_dev, upper_bound);
+        REQUIRE(actual == Approx(expected).epsilon(1e-15));
+      }
+    }
+  }
 }

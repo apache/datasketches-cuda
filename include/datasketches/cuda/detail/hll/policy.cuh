@@ -29,6 +29,7 @@
 
 #include <cuda/experimental/__cuco/hash_functions.cuh>
 
+#include <datasketches/cuda/detail/hll/composite_finalizer.cuh>
 #include <datasketches/cuda/detail/hll/normalizing_hasher.cuh>
 
 namespace datasketches::cuda::detail::hll {
@@ -51,10 +52,9 @@ namespace datasketches::cuda::detail::hll {
 //! `slotNo = HllUtil::getLow26(coupon) & configKmask = h1 & ((1<<lgK)-1)` since
 //! lgK <= 21 < 26. The 62-cap matches `HllUtil::coupon` line 144.
 //!
-//! `finalize` is a no-op stub satisfying the cudax policy concept. The downstream
-//! `hll_sketch::get_estimate` bypasses cudax's `estimate()` path entirely (it
-//! D2H-copies the registers, runs a wider reduction, and applies the Composite
-//! estimator on host).
+//! The policy finalizer uses the DataSketches Composite estimator. CCCL's
+//! current estimate contract returns `size_t`, so both ref estimates and the
+//! owning sketch's delegated host estimate truncate the `double` result.
 template <class _Key>
 struct policy {
   // Per-key normalization matching datasketches-cpp's hll_sketch::update(...)
@@ -124,18 +124,17 @@ struct policy {
     return static_cast<::cuda::std::uint8_t>(__cap + 1);
   }
 
-  //! @brief No-op finalizer satisfying the cudax policy concept.
-  //!
-  //! @note Never invoked by `datasketches::cuda::hll_sketch`. Compute the
-  //! estimate via the Composite estimator on host-side after a D2H copy of the
-  //! register array. See `composite_finalizer.hpp`.
-  //!
-  //! @return 0 unconditionally.
-  [[nodiscard]] __host__ __device__ static constexpr ::cuda::std::size_t finalize(double,
-                                                                                  int,
-                                                                                  int) noexcept
+  //! @brief Applies the DataSketches Composite estimator.
+  [[nodiscard]] __host__ __device__ static ::cuda::std::size_t finalize(double z,
+                                                                        int num_zeroes,
+                                                                        int precision) noexcept
   {
-    return 0;
+    // TODO(NVIDIA/cccl#10209): Preserve the Composite estimator's `double`
+    // return once CCCL supports a policy-defined estimate result type.
+    return static_cast<::cuda::std::size_t>(
+      composite_estimate(z,
+                         static_cast<::cuda::std::uint32_t>(num_zeroes),
+                         static_cast<::cuda::std::uint8_t>(precision)));
   }
 };
 
