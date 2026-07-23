@@ -29,6 +29,7 @@
 #include <hll.hpp>
 
 #include <datasketches/cuda/detail/hll/sketch_impl.hpp>
+#include <datasketches/cuda/hll_ref.cuh>
 
 namespace datasketches::cuda {
 
@@ -69,6 +70,7 @@ class hll_sketch {
   using key_type      = Key;
   using policy_type   = typename detail::hll::sketch_impl<Key, MR, Scope>::policy_type;
   using register_type = typename detail::hll::sketch_impl<Key, MR, Scope>::register_type;
+  using ref_type      = hll_sketch_ref<Key, Scope>;
 
   //! @brief Construct a sketch on a caller-provided stream.
   //!
@@ -107,10 +109,22 @@ class hll_sketch {
   template <class InputIt>
   void update_async(::cuda::stream_ref stream, InputIt first, InputIt last);
 
+  //! @brief Return a non-owning mutable ref to the device register storage.
+  //!
+  //! The returned ref must not outlive this sketch. The caller remains
+  //! responsible for stream ordering and for choosing a valid thread scope.
+  [[nodiscard]] ref_type ref() noexcept;
+
   //! @brief Cardinality estimate. Synchronizes `stream` before returning.
   //!
   //! @param[in] stream CUDA stream this operation is executed in.
   //! @return The cardinality estimate.
+  //!
+  //! @note The current CCCL estimate contract returns `size_t`, so this
+  //!   `double` is temporarily integer-valued.
+  //!
+  //! @todo NVIDIA/cccl#10209: Preserve the Composite estimator's fractional
+  //!   result once CCCL supports a policy-defined estimate result type.
   [[nodiscard]] double get_estimate(::cuda::stream_ref stream) const;
 
   //! @brief Lower bound on the estimate. Synchronizes `stream` before returning.

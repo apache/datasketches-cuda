@@ -52,6 +52,12 @@ void hll_sketch<Key, MR, Scope>::update_async(::cuda::stream_ref stream,
   impl_.update_async(stream, first, last);
 }
 
+template <class Key, class MR, ::cuda::thread_scope Scope>
+typename hll_sketch<Key, MR, Scope>::ref_type hll_sketch<Key, MR, Scope>::ref() noexcept
+{
+  return ref_type{impl_.ref()};
+}
+
 // ---------------------------------------------------------------------------
 // Estimate and bounds
 // ---------------------------------------------------------------------------
