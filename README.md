@@ -158,11 +158,12 @@ find_package(datasketches_cuda CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE datasketches::cuda)
 ```
 
-Note: an installed `datasketches_cuda` does not propagate CCCL or
-`datasketches-cpp` to consumers (both are CPM-fetched into the build tree).
-Downstream `find_package` consumers must provide both on their
-`CMAKE_PREFIX_PATH`. Consumption via `add_subdirectory` or CPM works without
-any extra setup.
+The installed package config propagates CUDAToolkit, CCCL, and
+datasketches-cpp through `find_dependency`. These dependencies are not bundled
+or installed by `datasketches_cuda`, so downstream `find_package` consumers
+must make them discoverable through `CMAKE_PREFIX_PATH` or the normal CMake
+package search paths. Consumption via `add_subdirectory` or CPM works without
+additional dependency setup.
 
 ## Known Issues
 
