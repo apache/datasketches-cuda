@@ -1,4 +1,6 @@
 github:
+  features:
+    issues: true
   rulesets:
     - name: "Default Branch Protection"
       type: branch
