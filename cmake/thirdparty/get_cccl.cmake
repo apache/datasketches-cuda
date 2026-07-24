@@ -40,8 +40,8 @@ if(NOT COMMAND CPMFindPackage)
 endif()
 
 function(find_and_configure_cccl)
-  set(_cccl_version 3.5.1)
-  set(_cccl_tag c95f99757cf95044ce82b905eec88ff40c851f7b)
+  set(_cccl_version 3.5.2)
+  set(_cccl_tag cba1df5786a2ffabc85887a9bfb1b7febee6232d)
   message(WARNING
     "datasketches_cuda: using CCCL@${_cccl_tag} as synthetic version ${_cccl_version} "
     "(TODO switch to a released CCCL version once required cudax HLL APIs are tagged)")

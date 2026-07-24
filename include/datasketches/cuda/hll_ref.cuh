@@ -145,19 +145,17 @@ class hll_sketch_ref {
     impl_.merge(group, other.impl_);
   }
 
-  //! @brief Cooperatively compute a truncated Composite estimate.
+  //! @brief Cooperatively compute the Composite estimate.
   //!
   //! @param[in] group Thread block reducing the register array.
-  //! @return DataSketches Composite estimate converted to `size_t`.
-  //! @todo NVIDIA/cccl#10209: Return `double` once CCCL supports a
-  //!   policy-defined estimate result type.
-  [[nodiscard]] __device__ ::cuda::std::size_t get_estimate(
+  //! @return DataSketches Composite estimate.
+  [[nodiscard]] __device__ double get_estimate(
     const ::cooperative_groups::thread_block& group) const noexcept
   {
     return impl_.get_estimate(group);
   }
 
-  //! @brief Compute a truncated Composite estimate on a host stream.
+  //! @brief Compute the Composite estimate on a host stream.
   //!
   //! This function synchronizes `stream` before returning.
   //!
@@ -165,12 +163,10 @@ class hll_sketch_ref {
   //!   register copy.
   //! @param[in] stream CUDA stream this operation is executed in.
   //! @param[in] host_mr Host memory resource used for the temporary copy.
-  //! @return DataSketches Composite estimate converted to `size_t`.
-  //! @todo NVIDIA/cccl#10209: Return `double` once CCCL supports a
-  //!   policy-defined estimate result type.
+  //! @return DataSketches Composite estimate.
   template <class HostMemoryResource = ::cuda::mr::legacy_pinned_memory_resource>
-  [[nodiscard]] __host__ ::cuda::std::size_t get_estimate(::cuda::stream_ref stream,
-                                                          HostMemoryResource host_mr = {}) const
+  [[nodiscard]] __host__ double get_estimate(::cuda::stream_ref stream,
+                                             HostMemoryResource host_mr = {}) const
   {
     return impl_.get_estimate(stream, host_mr);
   }

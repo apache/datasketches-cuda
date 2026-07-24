@@ -27,7 +27,6 @@
 
 #include <cuda_runtime.h>
 
-#include <cuda/experimental/__cuco/detail/hyperloglog/hyperloglog_impl.cuh>
 #include <cuda/experimental/__cuco/hyperloglog_ref.cuh>
 
 #include <hll.hpp>
@@ -86,16 +85,7 @@ class sketch_ref_impl {
   template <class CooperativeGroup, ::cuda::thread_scope OtherScope>
   __device__ void merge(CooperativeGroup group, sketch_ref_impl<Key, OtherScope> other)
   {
-    using destination_impl =
-      ::cuda::experimental::cuco::__hyperloglog_impl<Key, Scope, policy_type>;
-    using source_impl =
-      ::cuda::experimental::cuco::__hyperloglog_impl<Key, OtherScope, policy_type>;
-
-    // TODO(NVIDIA/cccl#10211): Use the public cooperative merge once CCCL
-    // passes its lightweight source ref by value.
-    destination_impl destination{inner_.sketch(), inner_.policy()};
-    source_impl source{other.inner_.sketch(), other.inner_.policy()};
-    destination.__merge(group, source);
+    inner_.merge(group, other.inner_);
   }
 
   template <::cuda::thread_scope OtherScope>
@@ -110,15 +100,15 @@ class sketch_ref_impl {
     inner_.merge_async(stream, other.inner_);
   }
 
-  [[nodiscard]] __device__ ::cuda::std::size_t get_estimate(
+  [[nodiscard]] __device__ double get_estimate(
     const ::cooperative_groups::thread_block& group) const noexcept
   {
     return inner_.estimate(group);
   }
 
   template <class HostMemoryResource = ::cuda::mr::legacy_pinned_memory_resource>
-  [[nodiscard]] __host__ ::cuda::std::size_t get_estimate(::cuda::stream_ref stream,
-                                                          HostMemoryResource host_mr = {}) const
+  [[nodiscard]] __host__ double get_estimate(::cuda::stream_ref stream,
+                                             HostMemoryResource host_mr = {}) const
   {
     return inner_.estimate(stream, host_mr);
   }
@@ -126,11 +116,9 @@ class sketch_ref_impl {
   [[nodiscard]] __device__ double get_lower_bound(const ::cooperative_groups::thread_block& group,
                                                   std::uint8_t num_std_dev) const noexcept
   {
-    const double estimate  = static_cast<double>(get_estimate(group));
-    const double non_zero  = static_cast<double>(num_non_zero_registers_(group));
-    const double rel_error = relative_error(/*upper_bound=*/false, get_lg_config_k(), num_std_dev);
-    const double bound     = estimate / (1.0 + rel_error);
-    return bound > non_zero ? bound : non_zero;
+    if (num_std_dev == 1) { return lower_bound_ref_<1>().estimate(group); }
+    if (num_std_dev == 2) { return lower_bound_ref_<2>().estimate(group); }
+    return lower_bound_ref_<3>().estimate(group);
   }
 
   template <class HostMemoryResource = ::cuda::mr::legacy_pinned_memory_resource>
@@ -139,17 +127,15 @@ class sketch_ref_impl {
                                                 HostMemoryResource host_mr = {}) const
   {
     ::datasketches::HllUtil<>::checkNumStdDev(num_std_dev);
-    const double estimate  = static_cast<double>(get_estimate(stream, host_mr));
-    const double non_zero  = static_cast<double>(num_non_zero_registers_(stream, host_mr));
-    const double rel_error = relative_error(/*upper_bound=*/false, get_lg_config_k(), num_std_dev);
-    const double bound     = estimate / (1.0 + rel_error);
-    return bound > non_zero ? bound : non_zero;
+    if (num_std_dev == 1) { return lower_bound_ref_<1>().estimate(stream, host_mr); }
+    if (num_std_dev == 2) { return lower_bound_ref_<2>().estimate(stream, host_mr); }
+    return lower_bound_ref_<3>().estimate(stream, host_mr);
   }
 
   [[nodiscard]] __device__ double get_upper_bound(const ::cooperative_groups::thread_block& group,
                                                   std::uint8_t num_std_dev) const noexcept
   {
-    const double estimate  = static_cast<double>(get_estimate(group));
+    const double estimate  = get_estimate(group);
     const double rel_error = relative_error(/*upper_bound=*/true, get_lg_config_k(), num_std_dev);
     return estimate / (1.0 + rel_error);
   }
@@ -160,7 +146,7 @@ class sketch_ref_impl {
                                                 HostMemoryResource host_mr = {}) const
   {
     ::datasketches::HllUtil<>::checkNumStdDev(num_std_dev);
-    const double estimate  = static_cast<double>(get_estimate(stream, host_mr));
+    const double estimate  = get_estimate(stream, host_mr);
     const double rel_error = relative_error(/*upper_bound=*/true, get_lg_config_k(), num_std_dev);
     return estimate / (1.0 + rel_error);
   }
@@ -221,12 +207,36 @@ class sketch_ref_impl {
   }
 
  private:
-  struct zero_count_policy : policy_type {
-    [[nodiscard]] __host__ __device__ static ::cuda::std::size_t finalize(double,
-                                                                          int num_zeroes,
-                                                                          int) noexcept
+  template <int NumStdDev>
+  struct lower_bound_policy : policy_type {
+    [[nodiscard]] __host__ __device__ static double finalize(double z,
+                                                             int num_zeroes,
+                                                             int precision) noexcept
     {
-      return static_cast<::cuda::std::size_t>(num_zeroes);
+      const auto lg_k       = static_cast<std::uint8_t>(precision);
+      const double estimate = policy_type::finalize(z, num_zeroes, precision);
+      const double non_zero =
+        static_cast<double>((::cuda::std::size_t{1} << precision) - num_zeroes);
+      const double rel_error = relative_error(/*upper_bound=*/false, lg_k, NumStdDev);
+      const double bound     = estimate / (1.0 + rel_error);
+      return bound > non_zero ? bound : non_zero;
+    }
+  };
+
+  template <int NumStdDev>
+  using lower_bound_ref =
+    ::cuda::experimental::cuco::hyperloglog_ref<Key, Scope, lower_bound_policy<NumStdDev>>;
+
+  template <int NumStdDev>
+  [[nodiscard]] __host__ __device__ lower_bound_ref<NumStdDev> lower_bound_ref_() const
+  {
+    return lower_bound_ref<NumStdDev>{inner_.sketch(), lower_bound_policy<NumStdDev>{}};
+  }
+
+  struct zero_count_policy : policy_type {
+    [[nodiscard]] __host__ __device__ static double finalize(double, int num_zeroes, int) noexcept
+    {
+      return static_cast<double>(num_zeroes);
     }
   };
 
@@ -240,27 +250,14 @@ class sketch_ref_impl {
   [[nodiscard]] __device__ ::cuda::std::size_t num_zero_registers_(
     const ::cooperative_groups::thread_block& group) const noexcept
   {
-    return zero_count_ref_().estimate(group);
+    return static_cast<::cuda::std::size_t>(zero_count_ref_().estimate(group));
   }
 
   template <class HostMemoryResource>
   [[nodiscard]] __host__ ::cuda::std::size_t num_zero_registers_(::cuda::stream_ref stream,
                                                                  HostMemoryResource host_mr) const
   {
-    return zero_count_ref_().estimate(stream, host_mr);
-  }
-
-  [[nodiscard]] __device__ ::cuda::std::size_t num_non_zero_registers_(
-    const ::cooperative_groups::thread_block& group) const noexcept
-  {
-    return num_registers() - num_zero_registers_(group);
-  }
-
-  template <class HostMemoryResource>
-  [[nodiscard]] __host__ ::cuda::std::size_t num_non_zero_registers_(
-    ::cuda::stream_ref stream, HostMemoryResource host_mr) const
-  {
-    return num_registers() - num_zero_registers_(stream, host_mr);
+    return static_cast<::cuda::std::size_t>(zero_count_ref_().estimate(stream, host_mr));
   }
 
   cudax_ref inner_;

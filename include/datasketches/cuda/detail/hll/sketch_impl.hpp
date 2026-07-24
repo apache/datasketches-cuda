@@ -212,10 +212,7 @@ struct sketch_impl {
 
   [[nodiscard]] ref_impl_type ref() const noexcept { return ref_impl_type{inner_.ref()}; }
 
-  double get_estimate(::cuda::stream_ref s) const
-  {
-    return static_cast<double>(ref().get_estimate(s));
-  }
+  double get_estimate(::cuda::stream_ref s) const { return ref().get_estimate(s); }
 
   double get_lower_bound(::cuda::stream_ref s, std::uint8_t numStdDev) const
   {

@@ -52,9 +52,7 @@ namespace datasketches::cuda::detail::hll {
 //! `slotNo = HllUtil::getLow26(coupon) & configKmask = h1 & ((1<<lgK)-1)` since
 //! lgK <= 21 < 26. The 62-cap matches `HllUtil::coupon` line 144.
 //!
-//! The policy finalizer uses the DataSketches Composite estimator. CCCL's
-//! current estimate contract returns `size_t`, so both ref estimates and the
-//! owning sketch's delegated host estimate truncate the `double` result.
+//! The policy finalizer uses the DataSketches Composite estimator.
 template <class _Key>
 struct policy {
   // Per-key normalization matching datasketches-cpp's hll_sketch::update(...)
@@ -125,16 +123,13 @@ struct policy {
   }
 
   //! @brief Applies the DataSketches Composite estimator.
-  [[nodiscard]] __host__ __device__ static ::cuda::std::size_t finalize(double z,
-                                                                        int num_zeroes,
-                                                                        int precision) noexcept
+  [[nodiscard]] __host__ __device__ static double finalize(double z,
+                                                           int num_zeroes,
+                                                           int precision) noexcept
   {
-    // TODO(NVIDIA/cccl#10209): Preserve the Composite estimator's `double`
-    // return once CCCL supports a policy-defined estimate result type.
-    return static_cast<::cuda::std::size_t>(
-      composite_estimate(z,
-                         static_cast<::cuda::std::uint32_t>(num_zeroes),
-                         static_cast<::cuda::std::uint8_t>(precision)));
+    return composite_estimate(z,
+                              static_cast<::cuda::std::uint32_t>(num_zeroes),
+                              static_cast<::cuda::std::uint8_t>(precision));
   }
 };
 

@@ -90,9 +90,7 @@ Construction does not initialize caller-owned storage. Device code must call
 `clear(group)` before first use unless the span already contains a valid
 sketch. The ref exposes cooperative `clear`, per-thread `update`, cooperative
 `merge`, block-cooperative and host `get_estimate`, confidence bounds,
-precision/target/register getters, and cooperative or host `is_empty`. The
-current CCCL estimate contract returns a truncated `size_t`; the owning sketch
-delegates to the same path and temporarily returns an integer-valued `double`.
+precision/target/register getters, and cooperative or host `is_empty`.
 
 Storage must be aligned to `hll_sketch_ref::sketch_alignment()` and contain
 exactly `hll_sketch_ref::sketch_bytes(lgK)` bytes for lgK 4 through 18.
@@ -112,7 +110,7 @@ Required:
 
 Fetched automatically via CPM at configure time (no manual install required):
 
-- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `c95f99757cf95044ce82b905eec88ff40c851f7b` as synthetic version `3.5.1` while this library develops against unreleased cudax HLL APIs. This should move to a real CCCL release once the required APIs are tagged.
+- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `cba1df5786a2ffabc85887a9bfb1b7febee6232d` as synthetic version `3.5.2` while this library develops against unreleased cudax HLL APIs. This should move to a real CCCL release once the required APIs are tagged.
 - [apache/datasketches-cpp](https://github.com/apache/datasketches-cpp) `5.2.0` (fall-back if `find_package(DataSketches 5.0.0 CONFIG)` does not locate a system install)
 - [Catch2](https://github.com/catchorg/Catch2) `3.5.3` (test-only)
 
@@ -169,7 +167,6 @@ additional dependency setup.
 
 - **HLL_8 only.** `HLL_4` and `HLL_6` packing are not yet implemented; constructing with those throws `std::invalid_argument`. `AuxHashMap` (the HLL_4 exception table) is also pending.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
-- **Estimates are temporarily integral.** CCCL's current HLL ref estimate contract truncates the DataSketches Composite `double`. The owning API delegates to this path and converts that `size_t` to `double`. Host/device floating-point reduction differences may differ from a truncated CPU estimate by one count.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
-- **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.1` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
+- **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.2` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
 - **No driver on some dev hosts.** CI gates the runtime parity test (`parity_test.cu`); host-only tests (preamble, reduction state, normalizing hasher, composite finalizer, policy compile) pass without a GPU.

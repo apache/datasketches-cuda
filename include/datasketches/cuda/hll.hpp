@@ -119,12 +119,6 @@ class hll_sketch {
   //!
   //! @param[in] stream CUDA stream this operation is executed in.
   //! @return The cardinality estimate.
-  //!
-  //! @note The current CCCL estimate contract returns `size_t`, so this
-  //!   `double` is temporarily integer-valued.
-  //!
-  //! @todo NVIDIA/cccl#10209: Preserve the Composite estimator's fractional
-  //!   result once CCCL supports a policy-defined estimate result type.
   [[nodiscard]] double get_estimate(::cuda::stream_ref stream) const;
 
   //! @brief Lower bound on the estimate. Synchronizes `stream` before returning.

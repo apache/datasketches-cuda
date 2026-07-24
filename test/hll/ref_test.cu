@@ -52,7 +52,7 @@ constexpr std::size_t flags_offset    = 5;
 constexpr std::uint8_t ooo_flag_mask  = 0x10;
 
 struct ref_query_result {
-  std::size_t estimate;
+  double estimate;
   double lower_bound;
   double upper_bound;
   bool empty;
@@ -77,7 +77,7 @@ __global__ void update_ref_kernel(Ref ref, const Key* keys, std::size_t size)
 }
 
 template <class Ref>
-__global__ void estimate_ref_kernel(Ref ref, std::size_t* result)
+__global__ void estimate_ref_kernel(Ref ref, double* result)
 {
   const auto block    = cooperative_groups::this_thread_block();
   const auto estimate = ref.get_estimate(block);
@@ -109,7 +109,7 @@ template <class Key>
 __global__ void block_ref_kernel(const Key* keys,
                                  std::size_t size,
                                  std::size_t sketch_bytes,
-                                 std::size_t* result)
+                                 double* result)
 {
   extern __shared__ ::cuda::std::byte storage[];
   using ref_type = datasketches::cuda::hll_sketch_ref<Key, ::cuda::thread_scope_block>;
@@ -173,12 +173,10 @@ void require_register_parity(const std::vector<Register>& registers,
   }
 }
 
-void require_estimate_parity(std::size_t actual, double expected)
+void require_estimate_parity(double actual, double expected)
 {
-  const auto truncated  = static_cast<std::size_t>(expected);
-  const auto difference = actual > truncated ? actual - truncated : truncated - actual;
-  CAPTURE(actual, expected, truncated, difference);
-  REQUIRE(difference <= 1);
+  CAPTURE(actual, expected);
+  REQUIRE(actual == Catch::Approx(expected).epsilon(1e-12).margin(1e-9));
 }
 
 template <class Key>
@@ -194,13 +192,13 @@ device_ref<Key> make_ref(thrust::device_vector<typename device_ref<Key>::registe
 }
 
 template <class Ref>
-std::size_t estimate_ref(::cuda::stream_ref stream, Ref ref)
+double estimate_ref(::cuda::stream_ref stream, Ref ref)
 {
-  thrust::device_vector<std::size_t> result(1);
+  thrust::device_vector<double> result(1);
   estimate_ref_kernel<<<1, 256, 0, stream.get()>>>(ref, thrust::raw_pointer_cast(result.data()));
   REQUIRE(cudaGetLastError() == cudaSuccess);
 
-  std::size_t host_result{};
+  double host_result{};
   REQUIRE(cudaMemcpyAsync(&host_result,
                           thrust::raw_pointer_cast(result.data()),
                           sizeof(host_result),
@@ -254,6 +252,12 @@ TEST_CASE("hll_sketch_ref exposes the CCCL storage layout", "[hll_ref][api]")
   REQUIRE(ref.get_target_type() == ::datasketches::HLL_8);
   REQUIRE(ref.num_registers() == 256);
 
+  std::vector<ref_type::register_type> undersized(8);
+  REQUIRE_THROWS_AS(
+    (ref_type{::cuda::std::as_writable_bytes(
+      ::cuda::std::span<ref_type::register_type>{undersized.data(), undersized.size()})}),
+    std::invalid_argument);
+
   std::vector<::cuda::std::byte> misaligned(ref_type::sketch_bytes(8) + 1);
   REQUIRE_THROWS_AS((ref_type{::cuda::std::span<::cuda::std::byte>{misaligned.data() + 1,
                                                                    ref_type::sketch_bytes(8)}}),
@@ -284,12 +288,10 @@ TEST_CASE("device-scope hll_sketch_ref updates caller-owned global storage", "[h
     std::count_if(cpu.bytes.begin() + register_offset, cpu.bytes.end(), [](const auto value) {
       return value != 0;
     }));
-  const double lower_rel_error = ::datasketches::HllUtil<>::getRelErr(false, true, lg_k, 2);
-  const double upper_rel_error = ::datasketches::HllUtil<>::getRelErr(true, true, lg_k, 2);
-  const double expected_device_lower =
-    std::max(static_cast<double>(query.estimate) / (1.0 + lower_rel_error), non_zero);
-  const double expected_device_upper =
-    static_cast<double>(query.estimate) / (1.0 + upper_rel_error);
+  const double lower_rel_error       = ::datasketches::HllUtil<>::getRelErr(false, true, lg_k, 2);
+  const double upper_rel_error       = ::datasketches::HllUtil<>::getRelErr(true, true, lg_k, 2);
+  const double expected_device_lower = std::max(query.estimate / (1.0 + lower_rel_error), non_zero);
+  const double expected_device_upper = query.estimate / (1.0 + upper_rel_error);
   REQUIRE(query.lower_bound == Catch::Approx(expected_device_lower).epsilon(1e-15));
   REQUIRE(query.upper_bound == Catch::Approx(expected_device_upper).epsilon(1e-15));
   REQUIRE(query.lg_k == lg_k);
@@ -299,11 +301,10 @@ TEST_CASE("device-scope hll_sketch_ref updates caller-owned global storage", "[h
   const auto host_estimate = ref.get_estimate(stream);
   require_estimate_parity(host_estimate, cpu.composite_estimate);
   REQUIRE_FALSE(ref.is_empty(stream));
-  const double host_lower = ref.get_lower_bound(stream, 2);
-  const double host_upper = ref.get_upper_bound(stream, 2);
-  const double expected_host_lower =
-    std::max(static_cast<double>(host_estimate) / (1.0 + lower_rel_error), non_zero);
-  const double expected_host_upper = static_cast<double>(host_estimate) / (1.0 + upper_rel_error);
+  const double host_lower          = ref.get_lower_bound(stream, 2);
+  const double host_upper          = ref.get_upper_bound(stream, 2);
+  const double expected_host_lower = std::max(host_estimate / (1.0 + lower_rel_error), non_zero);
+  const double expected_host_upper = host_estimate / (1.0 + upper_rel_error);
   REQUIRE(host_lower == Catch::Approx(expected_host_lower).epsilon(1e-15));
   REQUIRE(host_upper == Catch::Approx(expected_host_upper).epsilon(1e-15));
   REQUIRE_THROWS_AS(ref.get_lower_bound(stream, 0), std::invalid_argument);
@@ -333,7 +334,7 @@ TEST_CASE("block-scope hll_sketch_ref operates on block-exclusive shared storage
   auto keys                   = random_keys<std::uint64_t>(10'000, 0xA11CE002ULL);
   const auto cpu              = make_cpu_result(keys, lg_k);
   thrust::device_vector<std::uint64_t> device_keys = keys;
-  thrust::device_vector<std::size_t> result(1);
+  thrust::device_vector<double> result(1);
 
   ::cuda::stream stream{::cuda::devices[0]};
   using ref_type   = datasketches::cuda::hll_sketch_ref<std::uint64_t, ::cuda::thread_scope_block>;
@@ -344,7 +345,7 @@ TEST_CASE("block-scope hll_sketch_ref operates on block-exclusive shared storage
                                                     thrust::raw_pointer_cast(result.data()));
   REQUIRE(cudaGetLastError() == cudaSuccess);
 
-  std::size_t estimate{};
+  double estimate{};
   REQUIRE(cudaMemcpyAsync(&estimate,
                           thrust::raw_pointer_cast(result.data()),
                           sizeof(estimate),
@@ -431,7 +432,7 @@ TEST_CASE("hll_sketch ref mutates the owning sketch storage", "[hll_ref][owning]
   REQUIRE(cudaGetLastError() == cudaSuccess);
 
   require_estimate_parity(estimate_ref(stream, ref), cpu.composite_estimate);
-  REQUIRE(sketch.get_estimate(stream) == static_cast<double>(ref.get_estimate(stream)));
+  REQUIRE(sketch.get_estimate(stream) == ref.get_estimate(stream));
   REQUIRE(sketch.get_lower_bound(stream, 2) == ref.get_lower_bound(stream, 2));
   REQUIRE(sketch.get_upper_bound(stream, 2) == ref.get_upper_bound(stream, 2));
   REQUIRE(sketch.is_empty(stream) == ref.is_empty(stream));
