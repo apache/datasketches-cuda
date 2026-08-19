@@ -53,3 +53,5 @@ build/
 
 # Sketch binary test files
 *.sk
+# clangd compile database symlinked into the source tree by the build
+compile_commands.json
