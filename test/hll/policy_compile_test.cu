@@ -49,6 +49,8 @@ static_assert(std::is_same_v<policy_t::hash_result_type, __uint128_t>,
               "policy::hash_result_type must be __uint128_t");
 static_assert(std::is_same_v<policy_t::register_type, ::std::int32_t>,
               "policy::register_type must be int32_t");
+static_assert(std::is_same_v<decltype(policy_t::finalize(1.0, 1, 4)), double>,
+              "policy::finalize must preserve fractional estimates");
 static_assert(
   std::is_same_v<datasketches::cuda::detail::hll::register_type, policy_t::register_type>,
   "detail::hll::register_type must match policy::register_type");

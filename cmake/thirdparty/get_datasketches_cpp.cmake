@@ -17,15 +17,12 @@
 
 # apache/datasketches-cpp: header-only library used as:
 #   - parity reference (CPU sketch) in tests
-#   - delegation target for the Composite estimator helpers
-#     (HarmonicNumbers, CubicInterpolation, CompositeInterpolationXTable)
-#   - public dependency: hll/include/hll_sketch.hpp, detail/preamble.hpp,
-#     and detail/composite_finalizer.hpp all include upstream headers directly,
-#     so any consumer of datasketches::cuda also needs datasketches on the path.
+#   - public dependency for target_hll_type, HllUtil, wire-format constants,
+#     and inverse-power tables used by installed headers
 #
-# Minimum version: 5.0.0. The helpers we use (HllUtil, HarmonicNumbers, etc.)
-# have been in the public surface since at least v3.x; 5.0.0 is a conservative
-# floor aligned with current stable releases (latest: 5.2.0).
+# Minimum version: 5.0.0. The required HLL types and helpers have been in the
+# public surface since at least v3.x; 5.0.0 is a conservative floor aligned
+# with the pinned CPM fallback release, 5.2.0.
 #
 # Developer override: -DCPM_datasketches_SOURCE=/path/to/local/checkout (CPM-native).
 # Note: if find_package succeeds, the CPM_datasketches_SOURCE override is ignored
