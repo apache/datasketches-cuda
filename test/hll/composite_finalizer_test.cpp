@@ -103,10 +103,10 @@ test_result run(uint8_t lgK, uint64_t n, uint64_t seed)
 TEST_CASE("composite_finalizer matches CPU getCompositeEstimate", "[composite_finalizer]")
 {
   using Catch::Approx;
-  // Cover lgK across the typical operating range and a few cardinality regimes
-  // to exercise the 0/cubic/linear/asymptote branches of the Composite blender.
-  for (uint8_t lgK : {uint8_t{8}, uint8_t{12}, uint8_t{16}}) {
-    for (uint64_t n : {uint64_t{50}, uint64_t{1'000}, uint64_t{100'000}, uint64_t{2'000'000}}) {
+  for (std::uint8_t lgK = 4; lgK <= 18; ++lgK) {
+    const std::uint64_t config_k = std::uint64_t{1} << lgK;
+    const std::uint64_t high_n   = config_k * 32 < 200'000 ? config_k * 32 : 200'000;
+    for (std::uint64_t n : {config_k / 4, config_k * 2, high_n}) {
       auto r = run(lgK, n, /*seed=*/0xC0FFEE0042 ^ (uint64_t(lgK) << 40) ^ n);
       INFO("lgK=" << int(lgK) << " n=" << n);
       REQUIRE(r.our_estimate == Approx(r.cpu_composite_estimate).epsilon(1e-12));

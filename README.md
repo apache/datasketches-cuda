@@ -81,7 +81,7 @@ Required:
 
 Fetched automatically via CPM at configure time (no manual install required):
 
-- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `c95f99757cf95044ce82b905eec88ff40c851f7b` as synthetic version `3.5.1` while this library develops against unreleased cudax HLL APIs. This should move to a real CCCL release once the required APIs are tagged.
+- [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `cba1df5786a2ffabc85887a9bfb1b7febee6232d` as synthetic version `3.5.2` while this library develops against unreleased cudax HLL APIs. This should move to a real CCCL release once the required APIs are tagged.
 - [apache/datasketches-cpp](https://github.com/apache/datasketches-cpp) `5.2.0` (fall-back if `find_package(DataSketches 5.0.0 CONFIG)` does not locate a system install)
 - [Catch2](https://github.com/catchorg/Catch2) `3.5.3` (test-only)
 
@@ -127,16 +127,17 @@ find_package(datasketches_cuda CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE datasketches::cuda)
 ```
 
-Note: an installed `datasketches_cuda` does not propagate CCCL or
-`datasketches-cpp` to consumers (both are CPM-fetched into the build tree).
-Downstream `find_package` consumers must provide both on their
-`CMAKE_PREFIX_PATH`. Consumption via `add_subdirectory` or CPM works without
-any extra setup.
+The installed package config propagates CUDAToolkit, CCCL, and
+datasketches-cpp through `find_dependency`. These dependencies are not bundled
+or installed by `datasketches_cuda`, so downstream `find_package` consumers
+must make them discoverable through `CMAKE_PREFIX_PATH` or the normal CMake
+package search paths. Consumption via `add_subdirectory` or CPM works without
+additional dependency setup.
 
 ## Known Issues
 
 - **HLL_8 only.** `HLL_4` and `HLL_6` packing are not yet implemented; constructing with those throws `std::invalid_argument`. `AuxHashMap` (the HLL_4 exception table) is also pending.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
-- **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.1` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
+- **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.2` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
 - **No driver on some dev hosts.** CI gates the runtime parity test (`parity_test.cu`); host-only tests (preamble, reduction state, normalizing hasher, composite finalizer, policy compile) pass without a GPU.
