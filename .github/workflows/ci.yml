@@ -5,6 +5,13 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 # Ubuntu's apt cmake (3.22 on 22.04, 3.28 on 24.04) is below our
 # cmake_minimum_required (3.30). All jobs install this version from
 # Kitware's GitHub release tarball instead.
@@ -77,61 +84,52 @@ jobs:
 
       - name: Build
         # Builds all targets including the GPU test binaries, which catches
-        # compile/link regressions on a CPU runner. Tests live in a separate
-        # job that runs on GPU hardware (see commented-out `test:` job below).
+        # compile/link regressions on a CPU runner. The test job runs the
+        # binaries on GPU hardware.
         run: cmake --build build --parallel
 
-  # ---------------------------------------------------------------------------
-  # GPU-runner test job. Uncomment when a self-hosted runner labeled `gpu`
-  # (or a GitHub-hosted GPU runner) becomes available.
-  #
-  # Runs its own build because: (a) the build artifacts from the matrix above
-  # are MB-sized and slow to ship via `actions/upload-artifact`; (b) a self-
-  # hosted GPU runner usually has the toolchain installed already and can
-  # rebuild quickly. The CPU `build` matrix above remains the cross-version
-  # compile gate; this job is the runtime gate on a single canonical config.
-  # Pin `image` and `gcc` to whichever combo is the project's reference
-  # supported version.
-  # ---------------------------------------------------------------------------
-  # test:
-  #   name: Test (GPU)
-  #   needs: build
-  #   runs-on: [self-hosted, gpu]
-  #   container:
-  #     image: nvidia/cuda:13.1.0-devel-ubuntu24.04
-  #     options: --gpus all
-  #   steps:
-  #     - name: Install build prerequisites
-  #       run: |
-  #         apt-get update
-  #         apt-get install -y --no-install-recommends \
-  #             ca-certificates curl git ninja-build gcc-14 g++-14
-  #         curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
-  #           | tar -xz -C /opt
-  #         ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/cmake /usr/local/bin/cmake
-  #         ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/ctest /usr/local/bin/ctest
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         persist-credentials: false
-  #     - name: Cache CPM dependencies
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: /root/.cache/CPM
-  #         key: cpm-${{ hashFiles('cmake/thirdparty/*.cmake', 'cmake/CPM.cmake', 'test/hll/CMakeLists.txt') }}
-  #         restore-keys: |
-  #           cpm-
-  #     - name: Configure
-  #       env:
-  #         CC: gcc-14
-  #         CXX: g++-14
-  #         CUDAHOSTCXX: g++-14
-  #         CPM_SOURCE_CACHE: /root/.cache/CPM
-  #       run: |
-  #         cmake -B build -G Ninja \
-  #               -DCMAKE_BUILD_TYPE=Release \
-  #               -DCMAKE_CUDA_ARCHITECTURES=native
-  #     - name: Build
-  #       run: cmake --build build --parallel
-  #     - name: Run tests
-  #       run: ctest --test-dir build --parallel 4 --output-on-failure
+  test:
+    name: Test (GPU)
+    needs: build
+    runs-on: "runs-on=${{ github.run_id }}/family=g4dn.xlarge/image=ubuntu24-gpu-x64"
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:13.1.0-devel-ubuntu24.04
+      options: --gpus all
+    steps:
+      - name: Check GPU
+        run: nvidia-smi
+      - name: Install build prerequisites
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+              ca-certificates curl git ninja-build gcc-14 g++-14
+          curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
+            | tar -xz -C /opt
+          ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/cmake /usr/local/bin/cmake
+          ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/ctest /usr/local/bin/ctest
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: /root/.cache/CPM
+          key: cpm-${{ hashFiles('cmake/thirdparty/*.cmake', 'cmake/CPM.cmake', 'test/hll/CMakeLists.txt') }}
+          restore-keys: |
+            cpm-
+      - name: Configure
+        env:
+          CC: gcc-14
+          CXX: g++-14
+          CUDAHOSTCXX: g++-14
+          CPM_SOURCE_CACHE: /root/.cache/CPM
+        run: |
+          cmake -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_CUDA_ARCHITECTURES=75
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
