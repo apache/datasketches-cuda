@@ -12,63 +12,56 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
-# The build matrix's Ubuntu apt cmake is below cmake_minimum_required (3.30).
-# The GPU test uses the repository devcontainer image, which ships CMake.
-env:
-  CMAKE_VERSION: 3.30.5
-
 jobs:
-  build:
-    # The matrix is sparse on purpose: each row varies all axes (CTK, host
-    # compiler, CUDA arch) rather than enumerating a Cartesian product. Add
-    # rows as new combinations become interesting.
-    name: build (${{ matrix.cfg.name }})
+  matrix:
+    name: matrix
     runs-on: ubuntu-latest
-    # Both matrix rows read the same devcontainer.json, so either output
-    # selects the same image for the dependent GPU test.
     outputs:
-      devcontainer_image: ${{ steps.devcontainer.outputs.image }}
-    container:
-      image: ${{ matrix.cfg.image }}
-    strategy:
-      fail-fast: false
-      matrix:
-        cfg:
-          # Oldest supported CTK: CUDA 12.0, GCC 11, sm_70 (Volta), ubuntu22.04.
-          - { name: 'CTK 12.0 / GCC 11 / sm_70',
-              image: 'nvidia/cuda:12.0.1-devel-ubuntu22.04',
-              gcc: '11', arch: '70' }
-          # Newer compile config: CUDA 13.1, GCC 14, sm_100, ubuntu24.04.
-          # CUDA 13 dropped older base OSes; 22.04 and 24.04 are supported.
-          - { name: 'CTK 13.1 / GCC 14 / sm_100',
-              image: 'nvidia/cuda:13.1.0-devel-ubuntu24.04',
-              gcc: '14', arch: '100' }
-
+      builds: ${{ steps.config.outputs.builds }}
+      test_image: ${{ steps.config.outputs.test_image }}
+      test_gcc: ${{ steps.config.outputs.test_gcc }}
+      test_arch: ${{ steps.config.outputs.test_arch }}
     steps:
-      - name: Install build prerequisites
-        # The nvidia/cuda devel image ships nvcc, libcudart, and a host
-        # toolchain, but not cmake/ninja or arbitrary GCC versions. Install
-        # only what we need; --no-install-recommends keeps the layer small.
-        # cmake comes from Kitware's release tarball because the apt cmake
-        # on both 22.04 and 24.04 is below our minimum.
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-              ca-certificates curl git jq ninja-build \
-              gcc-${{ matrix.cfg.gcc }} g++-${{ matrix.cfg.gcc }}
-          curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
-            | tar -xz -C /opt
-          ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/cmake /usr/local/bin/cmake
-          ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/ctest /usr/local/bin/ctest
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Select devcontainer image
-        id: devcontainer
-        run: echo "image=$(jq -er '.image' .devcontainer/devcontainer.json)" >> "$GITHUB_OUTPUT"
+      - name: Verify devcontainers
+        run: python3 .devcontainer/generate.py --check
+
+      - name: Read matrix
+        id: config
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          matrix = json.loads(Path("ci/matrix.json").read_text())
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              builds = json.dumps(matrix["build"], separators=(",", ":"))
+              output.write(f"builds={builds}\n")
+              for key in ("image", "gcc", "arch"):
+                  output.write(f"test_{key}={matrix['test'][key]}\n")
+          PY
+
+  build:
+    name: build (${{ matrix.cfg.name }})
+    needs: matrix
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.cfg.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg: ${{ fromJSON(needs.matrix.outputs.builds) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Cache CPM dependencies
         uses: actions/cache@v4
@@ -97,11 +90,11 @@ jobs:
 
   test:
     name: test
-    needs: build
+    needs: [matrix, build]
     runs-on: "runs-on=${{ github.run_id }}/family=g4dn.xlarge/image=ubuntu24-gpu-x64"
     timeout-minutes: 120
     container:
-      image: ${{ needs.build.outputs.devcontainer_image }}
+      image: ${{ needs.matrix.outputs.test_image }}
       options: --gpus all
     steps:
       - name: Check GPU
@@ -119,14 +112,14 @@ jobs:
             cpm-
       - name: Configure
         env:
-          CC: gcc-15
-          CXX: g++-15
-          CUDAHOSTCXX: g++-15
+          CC: gcc-${{ needs.matrix.outputs.test_gcc }}
+          CXX: g++-${{ needs.matrix.outputs.test_gcc }}
+          CUDAHOSTCXX: g++-${{ needs.matrix.outputs.test_gcc }}
           CPM_SOURCE_CACHE: /root/.cache/CPM
         run: |
           cmake -B build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_CUDA_ARCHITECTURES=75
+                -DCMAKE_CUDA_ARCHITECTURES=${{ needs.matrix.outputs.test_arch }}
       - name: Build
         run: cmake --build build --parallel 2
       - name: Run tests

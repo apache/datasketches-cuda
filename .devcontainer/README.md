@@ -1,5 +1,16 @@
 # Datasketches CUDA Dev Container
 
+The default container uses the GPU test toolchain. The CPU build configurations
+are also available under `.devcontainer/cuda12.0-gcc11/` and
+`.devcontainer/cuda13.1-gcc14/`. Their image and compiler selections come from
+`ci/matrix.json`. After updating the matrix or shared devcontainer settings,
+regenerate and check the files with:
+
+```bash
+python3 .devcontainer/generate.py
+python3 .devcontainer/generate.py --check
+```
+
 ## VS Code
 
 Open the repository and use **Dev Containers: Reopen in Container**. GPU access

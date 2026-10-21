@@ -1,0 +1,25 @@
+{
+  "build": [
+    {
+      "name": "CTK 12.0 / GCC 11 / sm_70",
+      "cuda": "12.0",
+      "gcc": "11",
+      "arch": "70",
+      "image": "rapidsai/devcontainers:26.08-cpp-gcc11-cuda12.0-ubuntu22.04"
+    },
+    {
+      "name": "CTK 13.1 / GCC 14 / sm_100",
+      "cuda": "13.1",
+      "gcc": "14",
+      "arch": "100",
+      "image": "rapidsai/devcontainers:26.06-cpp-gcc14-cuda13.1-ubuntu24.04"
+    }
+  ],
+  "test": {
+    "name": "CTK 13.3 / GCC 15 / sm_75",
+    "cuda": "13.3",
+    "gcc": "15",
+    "arch": "75",
+    "image": "rapidsai/devcontainers:26.08-cpp-gcc15-cuda13.3"
+  }
+}
