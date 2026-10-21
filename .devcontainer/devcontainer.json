@@ -1,7 +1,7 @@
 {
-  "name": "datasketches-cuda-cuda13.3-gcc15",
+  "name": "datasketches-cuda-cuda13.4-gcc14",
   "shutdownAction": "stopContainer",
-  "image": "rapidsai/devcontainers:26.08-cpp-gcc15-cuda13.3",
+  "image": "rapidsai/devcontainers:26.12-cpp-gcc14-cuda13.4-ubuntu24.04",
   "workspaceFolder": "/home/coder/datasketches-cuda",
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/coder/datasketches-cuda,type=bind",
   "hostRequirements": {
@@ -10,21 +10,21 @@
   "runArgs": [
     "--init",
     "--name",
-    "${localEnv:USER:anon}-${localWorkspaceFolderBasename}-datasketches-cuda13.3-gcc15",
+    "${localEnv:USER:anon}-${localWorkspaceFolderBasename}-datasketches-cuda13.4-gcc14",
     "--ulimit",
     "nofile=500000"
   ],
   "containerEnv": {
-    "CC": "gcc-15",
-    "CXX": "g++-15",
-    "CUDAHOSTCXX": "g++-15",
+    "CC": "gcc-14",
+    "CXX": "g++-14",
+    "CUDAHOSTCXX": "g++-14",
     "CMAKE_GENERATOR": "Ninja",
     "CPM_SOURCE_CACHE": "${containerWorkspaceFolder}/build/cpm-cache",
     "NVCC_APPEND_FLAGS": "-t=100",
-    "DEVCONTAINER_NAME": "cuda13.3-gcc15",
-    "CCCL_CUDA_VERSION": "13.3",
+    "DEVCONTAINER_NAME": "cuda13.4-gcc14",
+    "CCCL_CUDA_VERSION": "13.4",
     "CCCL_HOST_COMPILER": "gcc",
-    "CCCL_HOST_COMPILER_VERSION": "15",
+    "CCCL_HOST_COMPILER_VERSION": "14",
     "CCCL_CUDA_EXTENDED": "false"
   },
   "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} || true",

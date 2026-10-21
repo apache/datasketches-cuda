@@ -1,7 +1,7 @@
 {
   "name": "datasketches-cuda-cuda12.0-gcc11",
   "shutdownAction": "stopContainer",
-  "image": "rapidsai/devcontainers:26.08-cpp-gcc11-cuda12.0-ubuntu22.04",
+  "image": "rapidsai/devcontainers:26.12-cpp-gcc11-cuda12.0-ubuntu22.04",
   "workspaceFolder": "/home/coder/datasketches-cuda",
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/coder/datasketches-cuda,type=bind",
   "hostRequirements": {

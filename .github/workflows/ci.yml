@@ -27,24 +27,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify devcontainers
-        run: python3 .devcontainer/generate.py --check
-
-      - name: Read matrix
+      - name: Verify devcontainers and read matrix
         id: config
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          matrix = json.loads(Path("ci/matrix.json").read_text())
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              builds = json.dumps(matrix["build"], separators=(",", ":"))
-              output.write(f"builds={builds}\n")
-              for key in ("image", "gcc", "arch"):
-                  output.write(f"test_{key}={matrix['test'][key]}\n")
-          PY
+        run: python3 .devcontainer/generate.py --check --github-output "$GITHUB_OUTPUT"
 
   build:
     name: build (${{ matrix.cfg.name }})

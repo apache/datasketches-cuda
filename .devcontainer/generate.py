@@ -26,6 +26,15 @@ ROOT = Path(__file__).resolve().parent
 MATRIX = ROOT.parent / "ci" / "matrix.json"
 
 
+def with_image(version, config):
+    result = dict(config)
+    result["image"] = (
+        f"rapidsai/devcontainers:{version}-cpp-gcc{config['gcc']}"
+        f"-cuda{config['cuda']}-{config['os']}"
+    )
+    return result
+
+
 def render(template, config):
     result = copy.deepcopy(template)
     suffix = f"cuda{config['cuda']}-gcc{config['gcc']}"
@@ -50,12 +59,16 @@ def render(template, config):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Verify generated files are current")
+    parser.add_argument("--github-output", type=Path, help="Write resolved CI matrix outputs")
     args = parser.parse_args()
 
     matrix = json.loads(MATRIX.read_text())
+    builds = [with_image(matrix["rapids_version"], config) for config in matrix["build"]]
+    test_build = next(config for config in builds if config["id"] == matrix["test"]["build"])
+    test = {**test_build, "arch": matrix["test"]["arch"]}
     template = json.loads((ROOT / "devcontainer.json").read_text())
-    expected = {ROOT / "devcontainer.json": render(template, matrix["test"])}
-    for config in matrix["build"]:
+    expected = {ROOT / "devcontainer.json": render(template, test)}
+    for config in builds:
         name = f"cuda{config['cuda']}-gcc{config['gcc']}"
         expected[ROOT / name / "devcontainer.json"] = render(template, config)
 
@@ -72,6 +85,11 @@ def main():
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
+    if args.github_output and not outdated:
+        with args.github_output.open("a") as output:
+            output.write(f"builds={json.dumps(builds, separators=(',', ':'))}\n")
+            for key in ("image", "gcc", "arch"):
+                output.write(f"test_{key}={test[key]}\n")
     return int(outdated)
 
 
