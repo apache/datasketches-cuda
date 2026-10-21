@@ -12,9 +12,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
-# Ubuntu's apt cmake (3.22 on 22.04, 3.28 on 24.04) is below our
-# cmake_minimum_required (3.30). All jobs install this version from
-# Kitware's GitHub release tarball instead.
+# The build matrix's Ubuntu apt cmake is below cmake_minimum_required (3.30).
+# The GPU test uses the repository devcontainer image, which ships CMake.
 env:
   CMAKE_VERSION: 3.30.5
 
@@ -23,8 +22,12 @@ jobs:
     # The matrix is sparse on purpose: each row varies all axes (CTK, host
     # compiler, CUDA arch) rather than enumerating a Cartesian product. Add
     # rows as new combinations become interesting.
-    name: ${{ matrix.cfg.name }}
+    name: build (${{ matrix.cfg.name }})
     runs-on: ubuntu-latest
+    # Both matrix rows read the same devcontainer.json, so either output
+    # selects the same image for the dependent GPU test.
+    outputs:
+      devcontainer_image: ${{ steps.devcontainer.outputs.image }}
     container:
       image: ${{ matrix.cfg.image }}
     strategy:
@@ -35,7 +38,7 @@ jobs:
           - { name: 'CTK 12.0 / GCC 11 / sm_70',
               image: 'nvidia/cuda:12.0.1-devel-ubuntu22.04',
               gcc: '11', arch: '70' }
-          # Newest CTK: CUDA 13.1, GCC 14, sm_100 (Blackwell), ubuntu24.04.
+          # Newer compile config: CUDA 13.1, GCC 14, sm_100, ubuntu24.04.
           # CUDA 13 dropped older base OSes; 22.04 and 24.04 are supported.
           - { name: 'CTK 13.1 / GCC 14 / sm_100',
               image: 'nvidia/cuda:13.1.0-devel-ubuntu24.04',
@@ -51,7 +54,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-              ca-certificates curl git ninja-build \
+              ca-certificates curl git jq ninja-build \
               gcc-${{ matrix.cfg.gcc }} g++-${{ matrix.cfg.gcc }}
           curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
             | tar -xz -C /opt
@@ -62,6 +65,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Select devcontainer image
+        id: devcontainer
+        run: echo "image=$(jq -er '.image' .devcontainer/devcontainer.json)" >> "$GITHUB_OUTPUT"
 
       - name: Cache CPM dependencies
         uses: actions/cache@v4
@@ -89,25 +96,16 @@ jobs:
         run: cmake --build build --parallel
 
   test:
-    name: Test (GPU)
+    name: test
     needs: build
     runs-on: "runs-on=${{ github.run_id }}/family=g4dn.xlarge/image=ubuntu24-gpu-x64"
     timeout-minutes: 120
     container:
-      image: nvidia/cuda:13.1.0-devel-ubuntu24.04
+      image: ${{ needs.build.outputs.devcontainer_image }}
       options: --gpus all
     steps:
       - name: Check GPU
         run: nvidia-smi
-      - name: Install build prerequisites
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-              ca-certificates curl git ninja-build gcc-14 g++-14
-          curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
-            | tar -xz -C /opt
-          ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/cmake /usr/local/bin/cmake
-          ln -sf /opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin/ctest /usr/local/bin/ctest
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -121,9 +119,9 @@ jobs:
             cpm-
       - name: Configure
         env:
-          CC: gcc-14
-          CXX: g++-14
-          CUDAHOSTCXX: g++-14
+          CC: gcc-15
+          CXX: g++-15
+          CUDAHOSTCXX: g++-15
           CPM_SOURCE_CACHE: /root/.cache/CPM
         run: |
           cmake -B build -G Ninja \
