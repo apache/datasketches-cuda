@@ -248,9 +248,10 @@ class theta_sketch {
   //! explicit trim. Trim those sketches before serialization, or choose an
   //! `lg_k` large enough to hold every retained entry in the image.
   //! The byte span must contain exactly one image, without trailing bytes.
+  //! Synchronizes `stream` before reading the host-accessible byte span.
   //!
   //! @param[in] stream CUDA stream this operation is executed in.
-  //! @param[in] bytes Wire-format compact Theta v3 image.
+  //! @param[in] bytes Host-accessible wire-format compact Theta v3 image.
   //! @param[in] mr Memory resource for device allocations.
   //! @param[in] lg_k Base 2 logarithm of the nominal number of retained entries.
   //! @param[in] seed Hash seed the image was produced with.

@@ -158,6 +158,7 @@ theta_sketch<Key, MR> theta_sketch<Key, MR>::deserialize(
   std::uint8_t lg_k,
   std::uint64_t seed)
 {
+  stream.sync();
   auto image = detail::theta::parse_compact_v3(bytes, seed);
   theta_sketch sketch(stream, std::move(mr), lg_k, seed);
   sketch.impl_.load_compact(stream, image);
