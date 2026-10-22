@@ -179,6 +179,7 @@ additional dependency setup.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
 - **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.2` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
-- **GPU runtime validation.** CI compiles the test binaries, but its GPU runtime
-  job is not enabled. Run `ctest --test-dir build --output-on-failure` on a host
-  with a supported GPU to validate runtime behavior and CPU/GPU parity.
+- **GPU runtime validation.** CI compiles the test binaries across the supported
+  build matrix and runs them on a GPU using the latest configuration. Run
+  `ctest --test-dir build --output-on-failure` on a host with a supported GPU
+  to validate runtime behavior and CPU/GPU parity locally.

@@ -1,0 +1,25 @@
+{
+  "rapids_version": "26.12",
+  "build": [
+    {
+      "id": "oldest",
+      "name": "CTK 12.0 / GCC 11 / sm_70",
+      "cuda": "12.0",
+      "gcc": "11",
+      "arch": "70",
+      "os": "ubuntu22.04"
+    },
+    {
+      "id": "latest",
+      "name": "CTK 13.4 / GCC 14 / sm_107+75",
+      "cuda": "13.4",
+      "gcc": "14",
+      "arch": "107;75",
+      "os": "ubuntu24.04"
+    }
+  ],
+  "test": {
+    "build": "latest",
+    "arch": "75"
+  }
+}
