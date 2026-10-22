@@ -19,8 +19,6 @@ jobs:
     outputs:
       builds: ${{ steps.config.outputs.builds }}
       test_image: ${{ steps.config.outputs.test_image }}
-      test_gcc: ${{ steps.config.outputs.test_gcc }}
-      test_arch: ${{ steps.config.outputs.test_arch }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,17 +59,27 @@ jobs:
           CC: gcc-${{ matrix.cfg.gcc }}
           CXX: g++-${{ matrix.cfg.gcc }}
           CUDAHOSTCXX: g++-${{ matrix.cfg.gcc }}
+          CUDACXX: /usr/local/cuda/bin/nvcc
           CPM_SOURCE_CACHE: /root/.cache/CPM
         run: |
           cmake -B build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_CUDA_ARCHITECTURES=${{ matrix.cfg.arch }}
+                -DCMAKE_CUDA_ARCHITECTURES="${{ matrix.cfg.arch }}"
 
       - name: Build
-        # Builds all targets including the GPU test binaries, which catches
-        # compile/link regressions on a CPU runner. The test job runs the
-        # binaries on GPU hardware.
-        run: cmake --build build --parallel
+        run: cmake --build build --parallel 2
+
+      - name: Package GPU tests
+        if: matrix.cfg.id == 'latest'
+        run: tar -cf gpu-tests.tar build
+
+      - name: Upload GPU tests
+        if: matrix.cfg.id == 'latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-tests
+          path: gpu-tests.tar
+          retention-days: 1
 
   test:
     name: test
@@ -88,24 +96,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Cache CPM dependencies
-        uses: actions/cache@v4
+
+      - name: Download GPU tests
+        uses: actions/download-artifact@v4
         with:
-          path: /root/.cache/CPM
-          key: cpm-${{ hashFiles('cmake/thirdparty/*.cmake', 'cmake/CPM.cmake', 'test/hll/CMakeLists.txt') }}
-          restore-keys: |
-            cpm-
-      - name: Configure
-        env:
-          CC: gcc-${{ needs.matrix.outputs.test_gcc }}
-          CXX: g++-${{ needs.matrix.outputs.test_gcc }}
-          CUDAHOSTCXX: g++-${{ needs.matrix.outputs.test_gcc }}
-          CPM_SOURCE_CACHE: /root/.cache/CPM
-        run: |
-          cmake -B build -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_CUDA_ARCHITECTURES=${{ needs.matrix.outputs.test_arch }}
-      - name: Build
-        run: cmake --build build --parallel 2
+          name: gpu-tests
+
+      - name: Unpack GPU tests
+        run: tar -xf gpu-tests.tar
+
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          ctest --test-dir build --show-only=json-v1 \
+            | python3 -c 'import json, sys; assert json.load(sys.stdin)["tests"], "No CTest tests discovered"'
+          ctest --test-dir build --output-on-failure

@@ -66,6 +66,8 @@ def main():
     builds = [with_image(matrix["rapids_version"], config) for config in matrix["build"]]
     test_build = next(config for config in builds if config["id"] == matrix["test"]["build"])
     test = {**test_build, "arch": matrix["test"]["arch"]}
+    if test["arch"] not in test_build["arch"].split(";"):
+        raise ValueError("GPU test architecture must be included in its build configuration")
     template = json.loads((ROOT / "devcontainer.json").read_text())
     expected = {ROOT / "devcontainer.json": render(template, test)}
     for config in builds:
@@ -88,8 +90,7 @@ def main():
     if args.github_output and not outdated:
         with args.github_output.open("a") as output:
             output.write(f"builds={json.dumps(builds, separators=(',', ':'))}\n")
-            for key in ("image", "gcc", "arch"):
-                output.write(f"test_{key}={test[key]}\n")
+            output.write(f"test_image={test['image']}\n")
     return int(outdated)
 
 

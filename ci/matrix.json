@@ -11,10 +11,10 @@
     },
     {
       "id": "latest",
-      "name": "CTK 13.4 / GCC 14 / sm_100",
+      "name": "CTK 13.4 / GCC 14 / sm_107+75",
       "cuda": "13.4",
       "gcc": "14",
-      "arch": "100",
+      "arch": "107;75",
       "os": "ubuntu24.04"
     }
   ],
