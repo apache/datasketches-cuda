@@ -38,12 +38,13 @@ If you are interested in making contributions to this site, please see our [Comm
 
 ## Scope
 
-This is a header-only INTERFACE library. The current release implements
-HyperLogLog with the `HLL_8` target type, byte-compatible with
-`datasketches::hll_sketch` for round-trip serialization. Other sketch families
-and HLL variants are on the roadmap (see [Known Issues](#known-issues)).
+This is a header-only INTERFACE library. It implements HyperLogLog with the
+`HLL_8` target type and an initial GPU Theta sketch with union, intersection,
+and A-not-B. HLL images and ordered, uncompressed compact Theta v3 images are
+compatible with `datasketches-cpp`. Other sketch families and variants remain
+on the roadmap (see [Known Issues](#known-issues)).
 
-Public header:
+HLL example:
 
 ```cpp
 #include <cuda/devices>
@@ -70,6 +71,33 @@ argument; construction and deserialization also require an explicit device
 memory resource. Streams used with `update_async` or `merge_async` must be
 synchronized or otherwise ordered before the sketch is destroyed.
 
+Theta example:
+
+```cpp
+#include <datasketches/cuda/theta.hpp>
+
+datasketches::cuda::theta_sketch<std::uint64_t> a(stream, mr, /*lg_k=*/12);
+datasketches::cuda::theta_sketch<std::uint64_t> b(stream, mr, /*lg_k=*/12);
+a.update(stream, dev_a.begin(), dev_a.end());
+b.update(stream, dev_b.begin(), dev_b.end());
+
+a.intersect(stream, b);
+double estimate = a.get_estimate();
+
+auto bytes = a.serialize_compact(stream);
+auto cpu = datasketches::compact_theta_sketch::deserialize(
+  bytes.data(), bytes.size());
+```
+
+`theta_sketch` keeps ordered hashes in device memory. Each update chunk runs a
+kernel that hashes, screens against theta, drops nearby duplicates, and
+compacts the survivors, then folds them in with CUB radix sort, unique, and
+merge. Updates are split so theta tightens partway through a large batch and
+the survivors of one pass fit a budget of `max(2^22, 16*k)` hashes, bounding
+scratch memory independently of the batch size. Batch and set operations
+synchronize because result counts size later allocations, so prefer fewer,
+larger updates over many small ones.
+
 ## Build & Runtime Dependencies
 
 Required:
@@ -77,13 +105,16 @@ Required:
 - CMake >= 3.30
 - A C++17-capable host compiler (GCC 13.2+ verified; older GCC may work if it accepts C++17 and is supported by the CUDA toolkit)
 - CUDA Toolkit >= 12.0 (12.4 verified)
-- An NVIDIA GPU with compute capability supported by the active CUDA Toolkit (configured via `CMAKE_CUDA_ARCHITECTURES`; defaults to `native`)
+- An NVIDIA GPU supported by the active CUDA Toolkit (configured via
+  `CMAKE_CUDA_ARCHITECTURES`; defaults to `native`). Theta requires compute
+  capability 7.0 or newer because its screen kernel uses warp match intrinsics.
 
 Fetched automatically via CPM at configure time (no manual install required):
 
 - [NVIDIA/cccl](https://github.com/NVIDIA/cccl) — pinned to commit `cba1df5786a2ffabc85887a9bfb1b7febee6232d` as synthetic version `3.5.2` while this library develops against unreleased cudax HLL APIs. This should move to a real CCCL release once the required APIs are tagged.
 - [apache/datasketches-cpp](https://github.com/apache/datasketches-cpp) `5.2.0` (fall-back if `find_package(DataSketches 5.0.0 CONFIG)` does not locate a system install)
 - [Catch2](https://github.com/catchorg/Catch2) `3.5.3` (test-only)
+- [NVIDIA/nvbench](https://github.com/NVIDIA/nvbench) (benchmark-only, fetched when `BUILD_BENCHMARKS=ON`)
 
 ## Compilation and Test
 
@@ -98,6 +129,7 @@ ctest --test-dir build --output-on-failure
 Common options:
 
 - `-DBUILD_TESTS=OFF` to skip building tests (defaults to `ON` at top level, `OFF` when consumed via `add_subdirectory`/CPM)
+- `-DBUILD_BENCHMARKS=ON` to build the nvbench benchmarks (defaults to `OFF`; binaries land in `build/benchmarks`)
 - `-DCMAKE_CUDA_ARCHITECTURES=<arch>` to target a specific GPU (e.g. `80` for A100; defaults to `native`)
 - `-DCPM_CCCL_SOURCE=/path/to/local/cccl` to point CPM at a local CCCL checkout instead of fetching
 
@@ -137,7 +169,17 @@ additional dependency setup.
 ## Known Issues
 
 - **HLL_8 only.** `HLL_4` and `HLL_6` packing are not yet implemented; constructing with those throws `std::invalid_argument`. `AuxHashMap` (the HLL_4 exception table) is also pending.
+- **Initial Theta surface.** Theta currently accepts primitive numeric keys and
+  ordered, uncompressed compact-v3 images. Strings and byte spans, unordered or
+  update-sketch images, compressed v4, and legacy wire versions are pending.
+  Imported images must fit the destination's `2^lg_k` entries: trim a CPU update
+  sketch before compacting it, or use a larger destination `lg_k`. Sampling
+  probabilities below `2^-63` are rejected because their hash threshold rounds
+  to zero.
 - **No LIST / SET deserialization.** The wire format's small-cardinality modes are rejected at parse. Sketches must already be in HLL mode.
 - **Round-trip diverges on `FLAGS` (oooFlag) and `hipAccum`.** GPU output always sets `oooFlag=1` (pins CPU side to the Composite estimator) and `hipAccum=0` (no HIP tracking on parallel atomic update). All other bytes round-trip exactly.
 - **CCCL uses a synthetic development version.** Until upstream tags a CCCL release containing the required cudax HLL policy and explicit stream / memory-resource APIs, `cmake/thirdparty/get_cccl.cmake` uses `CPMFindPackage` with synthetic version `3.5.2` and a pinned CCCL main commit. This prevents automatically accepting older CCCL installs from disk while keeping an explicit `CPM_CCCL_SOURCE` override available for development.
-- **No driver on some dev hosts.** CI gates the runtime parity test (`parity_test.cu`); host-only tests (preamble, reduction state, normalizing hasher, composite finalizer, policy compile) pass without a GPU.
+- **GPU runtime validation.** CI compiles the test binaries across the supported
+  build matrix and runs them on a GPU using the latest configuration. Run
+  `ctest --test-dir build --output-on-failure` on a host with a supported GPU
+  to validate runtime behavior and CPU/GPU parity locally.

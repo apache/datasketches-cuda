@@ -57,7 +57,7 @@ static_assert(
 static_assert(policy_t::default_seed == datasketches::DEFAULT_SEED,
               "policy::default_seed must stay pinned to datasketches-cpp DEFAULT_SEED "
               "(common_defs.hpp:34)");
-static_assert(datasketches::cuda::detail::hll::default_seed == datasketches::DEFAULT_SEED,
+static_assert(datasketches::cuda::detail::default_seed == datasketches::DEFAULT_SEED,
               "project-wide default_seed must stay pinned to datasketches-cpp DEFAULT_SEED");
 
 TEST_CASE("policy satisfies cudax concept", "[policy][compile]")

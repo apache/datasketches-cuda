@@ -19,16 +19,16 @@
 
 #pragma once
 
-#include <cstdint>
+#include <cuda/std/cstdint>
 
 #include <cuda_runtime.h>
 
 namespace datasketches::cuda::detail::hll::composite_interpolation {
 
-inline constexpr std::uint8_t min_lg_k       = 4;
-inline constexpr std::uint8_t max_lg_k       = 18;
-inline constexpr std::uint32_t num_x_values  = 257;
-inline constexpr std::uint32_t last_x_offset = num_x_values - 1;
+inline constexpr ::cuda::std::uint8_t min_lg_k       = 4;
+inline constexpr ::cuda::std::uint8_t max_lg_k       = 18;
+inline constexpr ::cuda::std::uint32_t num_x_values  = 257;
+inline constexpr ::cuda::std::uint32_t last_x_offset = num_x_values - 1;
 
 // DataSketches C++ 5.2.0, commit de8553ba372e618382c2e7b44b0ffc9422b9458c:
 // hll/include/CompositeInterpolationXTable-internal.hpp.
@@ -42,7 +42,7 @@ inline constexpr std::uint32_t last_x_offset = num_x_values - 1;
 #define DATASKETCHES_CUDA_HLL_TABLE_DECL inline constexpr
 #endif
 
-DATASKETCHES_CUDA_HLL_TABLE_DECL std::uint32_t y_strides[] = {
+DATASKETCHES_CUDA_HLL_TABLE_DECL ::cuda::std::uint32_t y_strides[] = {
   1, 2, 3, 5, 10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 10240};
 
 DATASKETCHES_CUDA_HLL_TABLE_DECL double x_values[15][num_x_values] = {
@@ -51,17 +51,19 @@ DATASKETCHES_CUDA_HLL_TABLE_DECL double x_values[15][num_x_values] = {
 
 #undef DATASKETCHES_CUDA_HLL_TABLE_DECL
 
-[[nodiscard]] __host__ __device__ constexpr bool valid_lg_k(std::uint8_t lg_k) noexcept
+[[nodiscard]] __host__ __device__ constexpr bool valid_lg_k(::cuda::std::uint8_t lg_k) noexcept
 {
   return lg_k >= min_lg_k && lg_k <= max_lg_k;
 }
 
-[[nodiscard]] __host__ __device__ inline const double* x_values_for(std::uint8_t lg_k) noexcept
+[[nodiscard]] __host__ __device__ inline const double* x_values_for(
+  ::cuda::std::uint8_t lg_k) noexcept
 {
   return x_values[lg_k - min_lg_k];
 }
 
-[[nodiscard]] __host__ __device__ inline std::uint32_t y_stride_for(std::uint8_t lg_k) noexcept
+[[nodiscard]] __host__ __device__ inline ::cuda::std::uint32_t y_stride_for(
+  ::cuda::std::uint8_t lg_k) noexcept
 {
   return y_strides[lg_k - min_lg_k];
 }

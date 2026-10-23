@@ -20,7 +20,7 @@
 #pragma once
 
 // normalizing_hasher<Key>: per-key normalization that mirrors
-// datasketches-cpp's hll_sketch_alloc::update(...) overloads before hashing.
+// datasketches-cpp's HLL and Theta update(...) overloads before hashing.
 //
 // datasketches-cpp routes all primitive types through MurmurHash3_x64_128
 // operating on a canonical 8-byte representation (HllSketch-internal.hpp):
@@ -46,7 +46,7 @@
 
 #include <cuda/experimental/__cuco/hash_functions.cuh>
 
-namespace datasketches::cuda::detail::hll {
+namespace datasketches::cuda::detail {
 
 // Inner hasher: MurmurHash3_x64_128 operating on uint64_t (the canonical
 // 8-byte representation after normalization).
@@ -54,7 +54,7 @@ using _murmur_u64 =
   ::cuda::experimental::cuco::hash<::cuda::std::uint64_t,
                                    ::cuda::experimental::cuco::hash_algorithm::murmurhash3_x64_128>;
 
-//! @brief Default datasketches HLL hash seed. Single source of truth for the
+//! @brief Default datasketches hash seed. Single source of truth for the
 //! seed across this project; mirrors datasketches-cpp `DEFAULT_SEED`
 //! (`common_defs.hpp:34`). Kept as a self-contained `constexpr` so the device
 //! headers need not include the heavy host-only `common_defs.hpp`. The value is
@@ -102,22 +102,12 @@ class normalizing_hasher {
       return ::cuda::std::bit_cast<::cuda::std::uint64_t>(
         static_cast<::cuda::std::int64_t>(static_cast<_Signed>(__k)));
     }
-    // float: convert to double, then apply the same canonicalization as double.
-    // Inline rather than calling _canonicalize(double) because _canonicalize is
-    // a member template on _Key — calling it with a double argument while
-    // _Key=float would bind to `const float&` via implicit narrowing conversion,
-    // reconstructing a float and looping forever.
-    else if constexpr (::cuda::std::is_same_v<_Key, float>) {
+    // Promote float to double; canonicalize signed zero and NaN for both types.
+    else if constexpr (::cuda::std::is_same_v<_Key, float> ||
+                       ::cuda::std::is_same_v<_Key, double>) {
       double __d = static_cast<double>(__k);
       if (::cuda::std::isnan(__d)) { return ::cuda::std::uint64_t{0x7ff8000000000000ULL}; }
       if (__d == 0.0) __d = 0.0;  // -0.0 → +0.0
-      return ::cuda::std::bit_cast<::cuda::std::uint64_t>(__d);
-    }
-    // double: canonicalize -0.0 → +0.0 and NaN → Java quiet-NaN canonical.
-    // Mirrors update(double) in HllSketch-internal.hpp:179-190.
-    else if constexpr (::cuda::std::is_same_v<_Key, double>) {
-      if (::cuda::std::isnan(__k)) { return ::cuda::std::uint64_t{0x7ff8000000000000ULL}; }
-      double __d = (__k == 0.0) ? 0.0 : __k;  // -0.0 → +0.0
       return ::cuda::std::bit_cast<::cuda::std::uint64_t>(__d);
     } else {
       // Type-dependent false to prevent eager instantiation in non-C++20 mode.
@@ -129,4 +119,4 @@ class normalizing_hasher {
   }
 };
 
-}  // namespace datasketches::cuda::detail::hll
+}  // namespace datasketches::cuda::detail

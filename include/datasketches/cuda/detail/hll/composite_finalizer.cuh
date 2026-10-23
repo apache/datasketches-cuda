@@ -19,8 +19,8 @@
 
 #pragma once
 
-#include <cstdint>
 #include <cuda/std/cmath>
+#include <cuda/std/cstdint>
 
 #include <cuda_runtime.h>
 
@@ -29,9 +29,10 @@
 namespace datasketches::cuda::detail::hll {
 
 //! @brief Returns the HLL raw harmonic-mean estimate.
-[[nodiscard]] __host__ __device__ inline double raw_estimate(double z, std::uint8_t lg_k) noexcept
+[[nodiscard]] __host__ __device__ inline double raw_estimate(double z,
+                                                             ::cuda::std::uint8_t lg_k) noexcept
 {
-  const std::uint32_t config_k = 1u << lg_k;
+  const ::cuda::std::uint32_t config_k = 1u << lg_k;
   double correction_factor;
   if (lg_k == 4) {
     correction_factor = 0.673;
@@ -45,7 +46,8 @@ namespace datasketches::cuda::detail::hll {
   return (correction_factor * config_k * config_k) / z;
 }
 
-[[nodiscard]] __host__ __device__ inline double harmonic_number(std::uint32_t value) noexcept
+[[nodiscard]] __host__ __device__ inline double harmonic_number(
+  ::cuda::std::uint32_t value) noexcept
 {
   switch (value) {
     case 0: return 0.0;
@@ -92,10 +94,10 @@ namespace datasketches::cuda::detail::hll {
 }
 
 //! @brief Returns the low-cardinality bitmap estimate.
-[[nodiscard]] __host__ __device__ inline double bitmap_estimate(std::uint32_t num_zeroes,
-                                                                std::uint8_t lg_k) noexcept
+[[nodiscard]] __host__ __device__ inline double bitmap_estimate(::cuda::std::uint32_t num_zeroes,
+                                                                ::cuda::std::uint8_t lg_k) noexcept
 {
-  const std::uint32_t config_k = 1u << lg_k;
+  const ::cuda::std::uint32_t config_k = 1u << lg_k;
   if (num_zeroes == 0) { return config_k * ::cuda::std::log(config_k / 0.5); }
   return config_k * (harmonic_number(config_k) - harmonic_number(num_zeroes));
 }
@@ -144,9 +146,8 @@ namespace datasketches::cuda::detail::hll {
   return term0 + term1 + term2 + term3;
 }
 
-[[nodiscard]] __host__ __device__ inline double interpolate_composite(const double* x_values,
-                                                                      std::uint32_t y_stride,
-                                                                      double x) noexcept
+[[nodiscard]] __host__ __device__ inline double interpolate_composite(
+  const double* x_values, ::cuda::std::uint32_t y_stride, double x) noexcept
 {
   constexpr int length = static_cast<int>(composite_interpolation::num_x_values);
   if (x == x_values[length - 1]) { return static_cast<double>(y_stride) * (length - 1); }
@@ -167,17 +168,16 @@ namespace datasketches::cuda::detail::hll {
 
 //! @brief DataSketches Composite cardinality estimate for an HLL_8 register
 //! array represented by its harmonic sum and zero-register count.
-[[nodiscard]] __host__ __device__ inline double composite_estimate(double z,
-                                                                   std::uint32_t num_zeroes,
-                                                                   std::uint8_t lg_k) noexcept
+[[nodiscard]] __host__ __device__ inline double composite_estimate(
+  double z, ::cuda::std::uint32_t num_zeroes, ::cuda::std::uint8_t lg_k) noexcept
 {
-  const double raw_est         = raw_estimate(z, lg_k);
-  const double* x_values       = composite_interpolation::x_values_for(lg_k);
-  const std::uint32_t y_stride = composite_interpolation::y_stride_for(lg_k);
+  const double raw_est                 = raw_estimate(z, lg_k);
+  const double* x_values               = composite_interpolation::x_values_for(lg_k);
+  const ::cuda::std::uint32_t y_stride = composite_interpolation::y_stride_for(lg_k);
 
   if (raw_est < x_values[0]) { return 0.0; }
 
-  constexpr std::uint32_t last = composite_interpolation::last_x_offset;
+  constexpr ::cuda::std::uint32_t last = composite_interpolation::last_x_offset;
   if (raw_est > x_values[last]) {
     const double final_y = static_cast<double>(y_stride) * last;
     return raw_est * (final_y / x_values[last]);

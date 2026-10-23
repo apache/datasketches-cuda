@@ -50,7 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /root/.cache/CPM
-          key: cpm-${{ hashFiles('cmake/thirdparty/*.cmake', 'cmake/CPM.cmake', 'test/hll/CMakeLists.txt') }}
+          key: cpm-${{ hashFiles('CMakeLists.txt', 'cmake/thirdparty/*.cmake', 'cmake/get_cpm.cmake', 'test/**/CMakeLists.txt') }}
           restore-keys: |
             cpm-
 

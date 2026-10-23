@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cuda/std/cstddef>
+#include <cuda/std/cstdint>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -37,13 +39,15 @@ namespace {
 
 struct finalizer_case {
   double z;
-  std::uint32_t zeroes;
-  std::uint8_t lg_k;
+  ::cuda::std::uint32_t zeroes;
+  ::cuda::std::uint8_t lg_k;
 };
 
-__global__ void finalize_kernel(const finalizer_case* cases, double* results, std::size_t size)
+__global__ void finalize_kernel(const finalizer_case* cases,
+                                double* results,
+                                ::cuda::std::size_t size)
 {
-  const std::size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  const ::cuda::std::size_t index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < size) {
     const auto c   = cases[index];
     results[index] = datasketches::cuda::detail::hll::composite_estimate(c.z, c.zeroes, c.lg_k);

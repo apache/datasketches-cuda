@@ -29,8 +29,8 @@
 
 #include <cuda/experimental/__cuco/hash_functions.cuh>
 
+#include <datasketches/cuda/detail/common/normalizing_hasher.cuh>
 #include <datasketches/cuda/detail/hll/composite_finalizer.cuh>
-#include <datasketches/cuda/detail/hll/normalizing_hasher.cuh>
 
 namespace datasketches::cuda::detail::hll {
 
@@ -61,13 +61,13 @@ struct policy {
   // MurmurHash3_x64_128, so GPU coupons are byte-compatible with the CPU sketch
   // for all supported types. Unsupported types produce a compile error in
   // normalizing_hasher::_canonicalize.
-  using hasher           = normalizing_hasher<_Key>;
+  using hasher           = detail::normalizing_hasher<_Key>;
   using hash_result_type = __uint128_t;
   using register_type    = ::cuda::std::int32_t;
 
   //! @brief Default datasketches HLL hash seed (`common_defs.hpp:34`).
   //! Sourced from the single project-wide constant in `normalizing_hasher.cuh`.
-  static constexpr ::cuda::std::uint64_t default_seed = detail::hll::default_seed;
+  static constexpr ::cuda::std::uint64_t default_seed = detail::default_seed;
 
   hasher hasher_{default_seed};
 

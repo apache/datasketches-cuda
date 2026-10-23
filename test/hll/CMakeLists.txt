@@ -15,17 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-CPMAddPackage(
-  NAME Catch2
-  GITHUB_REPOSITORY catchorg/Catch2
-  VERSION 3.5.3
-)
-
-if(Catch2_ADDED)
-  list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
-  include(Catch)
-endif()
-
 # Test targets get datasketches::cuda (our INTERFACE lib, brings CCCL + CUDA),
 # datasketches (apache/datasketches-cpp INTERFACE lib for parity & helpers),
 # and Catch2WithMain. CUDA::cudart is added explicitly for runtime calls in
